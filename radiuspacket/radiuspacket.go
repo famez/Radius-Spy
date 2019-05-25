@@ -53,17 +53,14 @@ type RadiusPacket struct {
 	id            uint8
 	length        uint16
 	authenticator [16]byte
-	attrs         map[AttrType]Attribute
-	//Map to respect the order in which the attributes are decoded (otherwise, they will be ordered by type)
-	posToAttr map[uint]AttrType
+	attrs         []Attribute
 }
 
 func NewRadiusPacket() *RadiusPacket {
 
 	packet := RadiusPacket{
-		length:    headerSize, //20 = Size of code + id + length + authenticator
-		attrs:     make(map[AttrType]Attribute),
-		posToAttr: make(map[uint]AttrType),
+		length: headerSize, //20 = Size of code + id + length + authenticator
+		attrs:  nil,
 	}
 
 	return &packet
@@ -90,15 +87,16 @@ func (packet *RadiusPacket) Decode(buff []byte) bool {
 
 	//Decode attrs
 	attrsBuff := buff[headerSize:]
-	packet.attrs = make(map[AttrType]Attribute)
-	packet.posToAttr = make(map[uint]AttrType)
-
-	var position uint
-	position = 0
 
 	for len(attrsBuff) > 0 {
 
 		attrLen := uint(attrsBuff[1])
+
+		if attrLen > uint(len(attrsBuff)) {
+			packet.attrs = nil //Remove already decoded attrs
+
+			return false
+		}
 
 		attr := Attribute{
 			attrType: AttrType(attrsBuff[0]),
@@ -108,16 +106,7 @@ func (packet *RadiusPacket) Decode(buff []byte) bool {
 
 		copy(attr.value, attrsBuff[2:attrLen])
 
-		packet.attrs[attr.attrType] = attr
-		packet.posToAttr[position] = attr.attrType
-
-		position++
-
-		if attrLen > uint(len(attrsBuff)) {
-			packet.attrs = make(map[AttrType]Attribute) //Remove already decoded attrs
-			packet.posToAttr = make(map[uint]AttrType)
-			return false
-		}
+		packet.attrs = append(packet.attrs, attr)
 
 		attrsBuff = attrsBuff[attrLen:]
 
@@ -149,20 +138,8 @@ func (packet *RadiusPacket) Encode() (bool, []byte) {
 
 	attrBuff := buff[20:]
 
-	//Itarete by position to keep the some order of the attributes in the list
-	for position := uint(0); position < uint(len(packet.posToAttr)); position++ {
-
-		attrType, ok := packet.posToAttr[position]
-
-		if !ok {
-			return false, nil //Something went wrong
-		}
-
-		attr, ok := packet.attrs[attrType]
-
-		if !ok {
-			return false, nil //Something went wrong
-		}
+	//Iterate by position to keep the some order of the attributes in the list
+	for _, attr := range packet.attrs {
 
 		attrLen := len(attr.value) + 2
 
@@ -213,9 +190,17 @@ func (packet *RadiusPacket) GetLength() uint16 {
 
 func (packet *RadiusPacket) GetRawAttr(attrType AttrType) (bool, []byte) {
 
-	attr, ok := packet.attrs[attrType]
+	var attr Attribute
+	found := false
 
-	if !ok {
+	for _, attr = range packet.attrs {
+		if attr.attrType == attrType {
+			found = true
+			break
+		}
+	}
+
+	if !found {
 		return false, nil
 	}
 
@@ -242,20 +227,33 @@ func (packet *RadiusPacket) GetStrAttr(attrType AttrType) (bool, string) {
 
 func (packet *RadiusPacket) SetRawAttr(attrType AttrType, data []byte) {
 
-	attr, ok := packet.attrs[attrType]
+	var pos int
+	var attr Attribute
+	found := false
 
-	//Not found
-	if !ok {
-		packet.length += uint16(len(data) + 2)
-		packet.posToAttr[uint(len(packet.posToAttr))] = attrType
-	} else {
-		//Update total length
-		packet.length = packet.length + uint16(len(data)) - uint16(len(attr.value))
+	for pos, attr = range packet.attrs {
+		if attr.attrType == attrType {
+			found = true
+			break
+		}
 	}
 
-	packet.attrs[attrType] = Attribute{
-		attrType: attrType,
-		value:    data,
+	value := make([]byte, len(data))
+	copy(value, data)
+
+	//Found
+	if found {
+		//Update total length
+		packet.length = packet.length + uint16(len(data)) - uint16(len(attr.value))
+		packet.attrs[pos].value = value
+	} else {
+		packet.length += uint16(len(data) + 2)
+		attr = Attribute{
+			attrType: attrType,
+			value:    value,
+		}
+
+		packet.attrs = append(packet.attrs, attr)
 	}
 
 }
