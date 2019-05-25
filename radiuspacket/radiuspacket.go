@@ -3,6 +3,7 @@ package radiuspacket
 import (
 	"encoding/binary"
 	"fmt"
+	"radius/utils"
 )
 
 type RadiusCode uint8
@@ -22,6 +23,8 @@ const (
 )
 
 const headerSize = 20
+
+const maxAttrSize = 255
 
 //Attribute represents an attribute value pair //RFC 2865 5. Attributes
 type Attribute struct {
@@ -190,23 +193,21 @@ func (packet *RadiusPacket) GetLength() uint16 {
 
 func (packet *RadiusPacket) GetRawAttr(attrType AttrType) (bool, []byte) {
 
-	var attr Attribute
+	var retVal []byte
 	found := false
-
-	for _, attr = range packet.attrs {
+	//Loop to find every attribute whose type matches (length > 255 for the attribute)
+	for _, attr := range packet.attrs {
 		if attr.attrType == attrType {
+			retVal = append(retVal, attr.value...)
 			found = true
+		} else if found {
 			break
 		}
 	}
 
-	if !found {
+	if retVal == nil {
 		return false, nil
 	}
-
-	retVal := make([]byte, len(attr.value))
-
-	copy(retVal, attr.value)
 
 	return true, retVal
 
@@ -227,33 +228,61 @@ func (packet *RadiusPacket) GetStrAttr(attrType AttrType) (bool, string) {
 
 func (packet *RadiusPacket) SetRawAttr(attrType AttrType, data []byte) {
 
-	var pos int
+	var pos, attrPos, attrNum int
 	var attr Attribute
-	found := false
 
+	attrNum = 0
+	attrPos = len(data)
+
+	//Loop to find every attribute whose type matches (length > 255 for the attribute)
 	for pos, attr = range packet.attrs {
 		if attr.attrType == attrType {
-			found = true
+			if attrNum == 0 {
+				attrPos = pos
+			}
+			attrNum++
+			packet.length -= uint16(len(attr.value) + 2)
+		} else if attrNum != 0 {
 			break
 		}
 	}
 
-	value := make([]byte, len(data))
-	copy(value, data)
+	if attrPos != len(data) {
+		copy(packet.attrs[attrPos:], packet.attrs[attrPos+attrNum:])
+		packet.attrs = packet.attrs[:len(packet.attrs)-attrNum]
+	}
 
-	//Found
-	if found {
-		//Update total length
-		packet.length = packet.length + uint16(len(data)) - uint16(len(attr.value))
-		packet.attrs[pos].value = value
-	} else {
-		packet.length += uint16(len(data) + 2)
+	offset := 0
+	leftLen := len(data)
+
+	for true {
+
+		attrLength := utils.Min(leftLen+2, maxAttrSize)
+
+		value := make([]byte, attrLength-2)
+		copy(value, data[offset:offset+attrLength-2])
+
+		packet.length += uint16(attrLength)
 		attr = Attribute{
 			attrType: attrType,
 			value:    value,
 		}
 
-		packet.attrs = append(packet.attrs, attr)
+		//Insertion
+		packet.attrs = append(packet.attrs, Attribute{} /* use the zero value of the element type */)
+		copy(packet.attrs[attrPos+1:], packet.attrs[attrPos:])
+		packet.attrs[attrPos] = attr
+
+		attrPos++
+
+		//Check if there is something left to be sent
+		if leftLen+2 > maxAttrSize {
+			leftLen -= (maxAttrSize - 2)
+			offset += (maxAttrSize - 2)
+		} else {
+			break
+		}
+
 	}
 
 }
