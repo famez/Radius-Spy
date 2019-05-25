@@ -20,6 +20,7 @@ const (
 
 const (
 	CalledStationId AttrType = 30
+	EAPMessage      AttrType = 79
 )
 
 const headerSize = 20
@@ -191,14 +192,16 @@ func (packet *RadiusPacket) GetLength() uint16 {
 
 }
 
-func (packet *RadiusPacket) GetRawAttr(attrType AttrType) (bool, []byte) {
+func (packet *RadiusPacket) GetRawAttr(attrType AttrType) (bool, [][]byte) {
 
-	var retVal []byte
+	var retVal [][]byte
 	found := false
 	//Loop to find every attribute whose type matches (length > 255 for the attribute)
 	for _, attr := range packet.attrs {
 		if attr.attrType == attrType {
-			retVal = append(retVal, attr.value...)
+			var raw []byte
+			raw = append(raw, attr.value...)
+			retVal = append(retVal, raw)
 			found = true
 		} else if found {
 			break
@@ -213,6 +216,7 @@ func (packet *RadiusPacket) GetRawAttr(attrType AttrType) (bool, []byte) {
 
 }
 
+/*
 func (packet *RadiusPacket) GetStrAttr(attrType AttrType) (bool, string) {
 
 	success, attr := packet.GetRawAttr(attrType)
@@ -223,9 +227,9 @@ func (packet *RadiusPacket) GetStrAttr(attrType AttrType) (bool, string) {
 
 	return false, ""
 }
-
+*/
 //Setters
-
+/*
 func (packet *RadiusPacket) SetRawAttr(attrType AttrType, data []byte) {
 
 	var pos, attrPos, attrNum int
@@ -269,7 +273,7 @@ func (packet *RadiusPacket) SetRawAttr(attrType AttrType, data []byte) {
 		}
 
 		//Insertion
-		packet.attrs = append(packet.attrs, Attribute{} /* use the zero value of the element type */)
+		packet.attrs = append(packet.attrs, Attribute{})
 		copy(packet.attrs[attrPos+1:], packet.attrs[attrPos:])
 		packet.attrs[attrPos] = attr
 
@@ -286,9 +290,105 @@ func (packet *RadiusPacket) SetRawAttr(attrType AttrType, data []byte) {
 	}
 
 }
+*/
+func (packet *RadiusPacket) SetRawAttr(attrType AttrType, data [][]byte) {
 
-func (packet *RadiusPacket) SetStrAttr(attrType AttrType, data string) {
+	var pos, attrPos, attrNum int
+	var attr Attribute
 
-	packet.SetRawAttr(attrType, []byte(data))
+	attrNum = 0
+	attrPos = len(packet.attrs)
+
+	//Loop to find every attribute whose type matches
+	for pos, attr = range packet.attrs {
+		if attr.attrType == attrType {
+			if attrNum == 0 {
+				attrPos = pos
+			}
+			attrNum++
+			packet.length -= uint16(len(attr.value) + 2)
+		} else if attrNum != 0 {
+			break
+		}
+	}
+
+	if attrPos != len(packet.attrs) {
+		copy(packet.attrs[attrPos:], packet.attrs[attrPos+attrNum:])
+		packet.attrs = packet.attrs[:len(packet.attrs)-attrNum]
+	}
+
+	for _, raw := range data {
+
+		if len(raw) > maxAttrSize {
+			fmt.Println("SetRawAttr: The data exceeds the maximum size...")
+			continue
+		}
+
+		value := make([]byte, len(raw))
+		copy(value, raw)
+
+		packet.length += uint16(len(raw) + 2)
+
+		attr = Attribute{
+			attrType: attrType,
+			value:    value,
+		}
+
+		//Insertion
+		packet.attrs = append(packet.attrs, Attribute{})
+		copy(packet.attrs[attrPos+1:], packet.attrs[attrPos:])
+		packet.attrs[attrPos] = attr
+
+		attrPos++
+
+	}
+
+}
+
+func (packet *RadiusPacket) GetEAPMessage() (bool, []byte) {
+
+	ok, data := packet.GetRawAttr(EAPMessage)
+
+	if !ok {
+		return false, nil
+	}
+
+	var retVal []byte
+
+	for _, raw := range data {
+		retVal = append(retVal, raw...)
+	}
+
+	return true, retVal
+
+}
+
+func (packet *RadiusPacket) SetEAPMessage(message []byte) {
+
+	offset := 0
+	leftLen := len(message)
+
+	var splittedEap [][]byte
+
+	for true {
+
+		attrLength := utils.Min(leftLen+2, maxAttrSize)
+
+		value := make([]byte, attrLength-2)
+		copy(value, message[offset:offset+attrLength-2])
+
+		splittedEap = append(splittedEap, value)
+
+		//Check if there is something left to be sent
+		if leftLen+2 > maxAttrSize {
+			leftLen -= (maxAttrSize - 2)
+			offset += (maxAttrSize - 2)
+		} else {
+			break
+		}
+
+	}
+
+	packet.SetRawAttr(EAPMessage, splittedEap)
 
 }
