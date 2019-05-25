@@ -9,8 +9,12 @@ type RadiusCode uint8
 type AttrType uint8
 
 const (
-	AccessRequest   RadiusCode = 1
-	AccessChallenge RadiusCode = 11
+	AccessRequest      RadiusCode = 1
+	AccessAccept       RadiusCode = 2
+	AccessReject       RadiusCode = 3
+	AccountingRequest  RadiusCode = 4
+	AccountingResponse RadiusCode = 5
+	AccessChallenge    RadiusCode = 11
 )
 
 const (
@@ -72,7 +76,7 @@ func (packet *RadiusPacket) Decode(buff []byte) bool {
 
 	fmt.Println("Decoding... ")
 
-	if len(buff) < 20 { //20 = Size of code + id + length + authenticator
+	if len(buff) < headerSize { //20 = Size of code + id + length + authenticator
 		return false //Malformed
 	}
 
@@ -85,7 +89,7 @@ func (packet *RadiusPacket) Decode(buff []byte) bool {
 	}
 
 	//Decode attrs
-	attrsBuff := buff[20:]
+	attrsBuff := buff[headerSize:]
 	packet.attrs = make(map[AttrType]Attribute)
 	packet.posToAttr = make(map[uint]AttrType)
 
@@ -191,6 +195,12 @@ func (packet *RadiusPacket) GetCode() RadiusCode {
 func (packet *RadiusPacket) GetId() uint8 {
 
 	return packet.id
+
+}
+
+func (packet *RadiusPacket) GetAuthenticator() [16]byte {
+
+	return packet.authenticator
 
 }
 
