@@ -11,3 +11,12 @@ func Contains(container []int, value int) bool {
 	return false
 
 }
+
+func Min(a int, b int) int {
+
+	if a < b {
+		return a
+	}
+
+	return b
+}
