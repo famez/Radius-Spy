@@ -392,3 +392,23 @@ func (packet *RadiusPacket) SetEAPMessage(message []byte) {
 	packet.SetRawAttr(EAPMessage, splittedEap)
 
 }
+
+func (packet *RadiusPacket) GetCalledSTAID() (bool, string) {
+
+	ok, data := packet.GetRawAttr(CalledStationId)
+
+	if !ok {
+		return false, ""
+	}
+
+	return true, string(data[0])
+
+}
+
+func (packet *RadiusPacket) SetCalledSTAID(sta string) {
+
+	value := make([][]byte, 1)
+	value[0] = []byte(sta)
+	packet.SetRawAttr(CalledStationId, value)
+
+}
