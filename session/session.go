@@ -16,7 +16,8 @@ const (
 	Active  Mode = 1
 )
 
-type MangleFunc func(packet *radiuspacket.RadiusPacket, from net.UDPAddr, to net.UDPAddr) bool
+//MangleFunc Callback that receives as argument the intercepted packetm, the client and server addresses and the sense of the packet (client -> server, server -> client)
+type MangleFunc func(packet *radiuspacket.RadiusPacket, from net.UDPAddr, to net.UDPAddr, clientToServer bool) bool
 
 //Session between host and guest to be hijacked.
 //The attacker must be placed between the authenticator and the authenticator server.
@@ -152,7 +153,7 @@ func (session *Session) Hijack(mangleFunc MangleFunc) {
 
 						packet.Decode(data.buff)
 
-						forward := mangleFunc(packet, data.senderAddr, client.clientAddr)
+						forward := mangleFunc(packet, data.senderAddr, client.clientAddr, false)
 
 						if forward {
 
@@ -240,6 +241,15 @@ func (session *Session) Hijack(mangleFunc MangleFunc) {
 
 				clients = append(clients, client)
 
+				//Create new context for the new session. Available for the whole program.
+
+				context := ContextInfo{
+					server: *(client.connection.RemoteAddr().(*net.UDPAddr)),
+					nas:    client.clientAddr,
+				}
+
+				AddContext(context)
+
 				go receiveUDPPacket(client.connection, mappedPort, udpChan) //Start receiving packets from radius server
 
 			}
@@ -252,7 +262,7 @@ func (session *Session) Hijack(mangleFunc MangleFunc) {
 
 				packet.Decode(data.buff)
 
-				forward := mangleFunc(packet, client.clientAddr, *(client.connection.RemoteAddr().(*net.UDPAddr)))
+				forward := mangleFunc(packet, client.clientAddr, *(client.connection.RemoteAddr().(*net.UDPAddr)), true)
 
 				if forward {
 
