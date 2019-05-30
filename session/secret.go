@@ -9,13 +9,13 @@ import (
 )
 
 type packetInfo struct {
-	packet radius.RadiusPacket
+	packet *radius.RadiusPacket
 	addr   net.UDPAddr
 }
 
 var cachedPackets []packetInfo
 
-func GuessSecret(packet radius.RadiusPacket, client net.UDPAddr, server net.UDPAddr, clientToServer bool) {
+func GuessSecret(packet *radius.RadiusPacket, client net.UDPAddr, server net.UDPAddr, clientToServer bool) {
 
 	switch packet.GetCode() {
 	case radius.AccessRequest:
@@ -51,7 +51,7 @@ func GuessSecret(packet radius.RadiusPacket, client net.UDPAddr, server net.UDPA
 				if context != nil && context.GetSecretStatus() == SecretUnknown {
 					context.SetSecretStatus(GuessingSecret)
 					config := GetConfig()
-					go trySecrets(&request, &packet, config.GetSecretsFile(), context)
+					go trySecrets(request, packet, config.GetSecretsFile(), context)
 				}
 
 				break
@@ -82,7 +82,7 @@ func trySecrets(request *radius.RadiusPacket, response *radius.RadiusPacket, sec
 		fmt.Println("Trying secret", secret)
 
 		fmt.Println("Response packet. Request Auth message:", request.GetAuthenticator())
-		success, respAuth := radius.CalculateResponseAuth(*response, request.GetAuthenticator(), secret)
+		success, respAuth := radius.CalculateResponseAuth(response, request.GetAuthenticator(), secret)
 
 		if success {
 			fmt.Println("Real response auth ", response.GetAuthenticator(), "guessed response auth", respAuth)
