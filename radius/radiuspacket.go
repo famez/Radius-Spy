@@ -19,8 +19,9 @@ const (
 )
 
 const (
-	CalledStationId AttrType = 30
-	EAPMessage      AttrType = 79
+	CalledStationId      AttrType = 30
+	EAPMessage           AttrType = 79
+	MessageAuthenticator AttrType = 80
 )
 
 const headerSize = 20
@@ -69,6 +70,17 @@ func NewRadiusPacket() *RadiusPacket {
 
 	return &packet
 
+}
+
+func (packet RadiusPacket) Clone() *RadiusPacket {
+
+	retVal := packet
+
+	retVal.attrs = make([]Attribute, len(packet.attrs))
+
+	copy(retVal.attrs, packet.attrs)
+
+	return &retVal
 }
 
 //Decode decodes a RADIUS packet.
@@ -410,5 +422,25 @@ func (packet *RadiusPacket) SetCalledSTAID(sta string) {
 	value := make([][]byte, 1)
 	value[0] = []byte(sta)
 	packet.SetRawAttr(CalledStationId, value)
+
+}
+
+func (packet *RadiusPacket) GetMessageAuthenticator() (bool, []byte) {
+
+	ok, data := packet.GetRawAttr(MessageAuthenticator)
+
+	if !ok {
+		return false, nil
+	}
+
+	return true, data[0]
+
+}
+
+func (packet *RadiusPacket) SetMessageAuthenticator(message [16]byte) {
+
+	value := make([][]byte, 1)
+	value[0] = append(value[0], message[:]...)
+	packet.SetRawAttr(MessageAuthenticator, value)
 
 }
