@@ -4,7 +4,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net"
-	"radius/radiuspacket"
+	"radius/radius"
 	"radius/utils"
 	"strconv"
 )
@@ -17,7 +17,7 @@ const (
 )
 
 //MangleFunc Callback that receives as argument the intercepted packetm, the client and server addresses and the sense of the packet (client -> server, server -> client)
-type MangleFunc func(packet *radiuspacket.RadiusPacket, from net.UDPAddr, to net.UDPAddr, clientToServer bool) bool
+type MangleFunc func(packet *radius.RadiusPacket, from net.UDPAddr, to net.UDPAddr, clientToServer bool) bool
 
 //Session between host and guest to be hijacked.
 //The attacker must be placed between the authenticator and the authenticator server.
@@ -149,7 +149,7 @@ func (session *Session) Hijack(mangleFunc MangleFunc) {
 
 					if session.mode == Active {
 
-						packet := radiuspacket.NewRadiusPacket()
+						packet := radius.NewRadiusPacket()
 
 						packet.Decode(data.buff)
 
@@ -258,7 +258,7 @@ func (session *Session) Hijack(mangleFunc MangleFunc) {
 
 			if session.mode == Active {
 
-				packet := radiuspacket.NewRadiusPacket()
+				packet := radius.NewRadiusPacket()
 
 				packet.Decode(data.buff)
 

@@ -4,7 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"net"
-	"radius/radiuspacket"
+	"radius/radius"
 	"radius/session"
 )
 
@@ -13,7 +13,7 @@ const accPort = 1813
 
 const hostName = "169.254.63.10"
 
-func manglePacket(manglePacket *radiuspacket.RadiusPacket, from net.UDPAddr, to net.UDPAddr, clientToServer bool) bool {
+func manglePacket(manglePacket *radius.RadiusPacket, from net.UDPAddr, to net.UDPAddr, clientToServer bool) bool {
 
 	var client, server net.UDPAddr
 

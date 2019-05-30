@@ -5,20 +5,20 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"radius/radiuspacket"
+	"radius/radius"
 )
 
 type packetInfo struct {
-	packet radiuspacket.RadiusPacket
+	packet radius.RadiusPacket
 	addr   net.UDPAddr
 }
 
 var cachedPackets []packetInfo
 
-func GuessSecret(packet radiuspacket.RadiusPacket, client net.UDPAddr, server net.UDPAddr, clientToServer bool) {
+func GuessSecret(packet radius.RadiusPacket, client net.UDPAddr, server net.UDPAddr, clientToServer bool) {
 
 	switch packet.GetCode() {
-	case radiuspacket.AccessRequest:
+	case radius.AccessRequest:
 		if clientToServer { //Verify that the packet does not come from the RADIUS server
 
 			packetInfo := packetInfo{
@@ -31,14 +31,14 @@ func GuessSecret(packet radiuspacket.RadiusPacket, client net.UDPAddr, server ne
 			cachedPackets = append(cachedPackets, packetInfo)
 		}
 
-	case radiuspacket.AccessAccept, radiuspacket.AccessChallenge, radiuspacket.AccessReject:
+	case radius.AccessAccept, radius.AccessChallenge, radius.AccessReject:
 
 		if clientToServer || cachedPackets == nil {
 			return //Something went wrong
 		}
 
 		for id, packetInfo := range cachedPackets {
-			if packetInfo.packet.GetCode() == radiuspacket.AccessRequest && packetInfo.packet.GetId() == packet.GetId() &&
+			if packetInfo.packet.GetCode() == radius.AccessRequest && packetInfo.packet.GetId() == packet.GetId() &&
 				packetInfo.addr.IP.Equal(client.IP) && packetInfo.addr.Port == client.Port { //Match request-response
 				request := packetInfo.packet
 				cachedPackets = append(cachedPackets[:id], cachedPackets[id+1:]...)
@@ -62,7 +62,7 @@ func GuessSecret(packet radiuspacket.RadiusPacket, client net.UDPAddr, server ne
 
 }
 
-func trySecrets(request *radiuspacket.RadiusPacket, response *radiuspacket.RadiusPacket, secretFile string, context *ContextInfo) {
+func trySecrets(request *radius.RadiusPacket, response *radius.RadiusPacket, secretFile string, context *ContextInfo) {
 
 	file, err := os.Open(secretFile)
 	if err != nil {
@@ -82,7 +82,7 @@ func trySecrets(request *radiuspacket.RadiusPacket, response *radiuspacket.Radiu
 		fmt.Println("Trying secret", secret)
 
 		fmt.Println("Response packet. Request Auth message:", request.GetAuthenticator())
-		success, respAuth := radiuspacket.CalculateResponseAuth(*response, request.GetAuthenticator(), secret)
+		success, respAuth := radius.CalculateResponseAuth(*response, request.GetAuthenticator(), secret)
 
 		if success {
 			fmt.Println("Real response auth ", response.GetAuthenticator(), "guessed response auth", respAuth)

@@ -1,4 +1,4 @@
-package radiuspacket
+package radius
 
 import "crypto/md5"
 
