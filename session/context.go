@@ -33,10 +33,10 @@ type StaInfo struct {
 var contexts []*ContextInfo
 var contextsMutex sync.Mutex
 
-func AddContext(context ContextInfo) {
+func AddContext(context *ContextInfo) {
 
 	contextsMutex.Lock()
-	contexts = append(contexts, &context)
+	contexts = append(contexts, context)
 	contextsMutex.Unlock()
 
 }

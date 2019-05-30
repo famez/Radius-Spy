@@ -248,7 +248,7 @@ func (session *Session) Hijack(mangleFunc MangleFunc) {
 					nas:    client.clientAddr,
 				}
 
-				AddContext(context)
+				AddContext(&context)
 
 				go receiveUDPPacket(client.connection, mappedPort, udpChan) //Start receiving packets from radius server
 
