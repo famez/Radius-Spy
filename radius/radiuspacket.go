@@ -3,6 +3,7 @@ package radius
 import (
 	"encoding/binary"
 	"fmt"
+	"net"
 	"radius/utils"
 )
 
@@ -19,7 +20,16 @@ const (
 )
 
 const (
+	UserName             AttrType = 1
+	NasIp                AttrType = 4
+	NASPort              AttrType = 5
+	FramedMTU            AttrType = 12
+	StateAttr            AttrType = 24
 	CalledStationId      AttrType = 30
+	CallingStationId     AttrType = 31
+	AccountSessionId     AttrType = 44
+	NASPortType          AttrType = 61
+	ConnectInfo          AttrType = 77
 	EAPMessage           AttrType = 79
 	MessageAuthenticator AttrType = 80
 )
@@ -184,10 +194,24 @@ func (packet *RadiusPacket) GetCode() RadiusCode {
 
 }
 
+//SetCode
+func (packet *RadiusPacket) SetCode(code RadiusCode) {
+
+	packet.code = code
+
+}
+
 //GetId getter to obtain the id of the packet
 func (packet *RadiusPacket) GetId() uint8 {
 
 	return packet.id
+
+}
+
+//SetId
+func (packet *RadiusPacket) SetId(id uint8) {
+
+	packet.id = id
 
 }
 
@@ -347,6 +371,205 @@ func (packet *RadiusPacket) SetCalledSTAID(sta string) {
 	value := make([][]byte, 1)
 	value[0] = []byte(sta)
 	packet.SetRawAttr(CalledStationId, value)
+
+}
+
+func (packet *RadiusPacket) GetCallingSTAID() (bool, string) {
+
+	ok, data := packet.GetRawAttr(CallingStationId)
+
+	if !ok {
+		return false, ""
+	}
+
+	return true, string(data[0])
+
+}
+
+func (packet *RadiusPacket) SetCallingSTAID(sta string) {
+
+	value := make([][]byte, 1)
+	value[0] = []byte(sta)
+	packet.SetRawAttr(CallingStationId, value)
+
+}
+
+func (packet *RadiusPacket) GetUserName() (bool, string) {
+
+	ok, data := packet.GetRawAttr(UserName)
+
+	if !ok {
+		return false, ""
+	}
+
+	return true, string(data[0])
+
+}
+
+func (packet *RadiusPacket) SetUserName(user string) {
+
+	value := make([][]byte, 1)
+	value[0] = []byte(user)
+	packet.SetRawAttr(UserName, value)
+
+}
+
+func (packet *RadiusPacket) GetConnectInfo() (bool, string) {
+
+	ok, data := packet.GetRawAttr(ConnectInfo)
+
+	if !ok {
+		return false, ""
+	}
+
+	return true, string(data[0])
+
+}
+
+func (packet *RadiusPacket) SetConnectInfo(connect string) {
+
+	value := make([][]byte, 1)
+	value[0] = []byte(connect)
+	packet.SetRawAttr(ConnectInfo, value)
+
+}
+
+func (packet *RadiusPacket) GetState() (bool, []byte) {
+
+	ok, data := packet.GetRawAttr(StateAttr)
+
+	if !ok {
+		return false, nil
+	}
+
+	return true, data[0]
+
+}
+
+func (packet *RadiusPacket) SetState(state []byte) {
+
+	value := make([][]byte, 1)
+	value[0] = state
+	packet.SetRawAttr(StateAttr, value)
+
+}
+
+func (packet *RadiusPacket) GetAccountSession() (bool, string) {
+
+	ok, data := packet.GetRawAttr(AccountSessionId)
+
+	if !ok {
+		return false, ""
+	}
+
+	return true, string(data[0])
+
+}
+
+func (packet *RadiusPacket) SetAccountSession(session string) {
+
+	value := make([][]byte, 1)
+	value[0] = []byte(session)
+	packet.SetRawAttr(AccountSessionId, value)
+
+}
+
+func (packet *RadiusPacket) GetNASIp() (bool, net.IP) {
+
+	ok, data := packet.GetRawAttr(NasIp)
+
+	if !ok || len(data) != 1 || len(data[0]) != 4 {
+		return false, net.IP{}
+	}
+
+	return true, net.IPv4(data[0][0], data[0][1], data[0][2], data[0][3])
+
+}
+
+func (packet *RadiusPacket) SetNASIp(addr net.IP) {
+
+	/*if len(addr) < 16 {
+		return
+	}*/
+
+	value := make([][]byte, 1)
+	value[0] = append(value[0], addr[12:16]...)
+	packet.SetRawAttr(NasIp, value)
+
+}
+
+func (packet *RadiusPacket) GetNASPort() (bool, uint32) {
+
+	ok, data := packet.GetRawAttr(NASPort)
+
+	if !ok || len(data) != 1 || len(data[0]) != 4 { //Not present or size unexpected
+		return false, 0
+	}
+
+	return true, binary.BigEndian.Uint32(data[0])
+
+}
+
+func (packet *RadiusPacket) SetNASPort(port uint32) {
+
+	value := make([][]byte, 1)
+	aux := make([]byte, 4)
+
+	binary.BigEndian.PutUint32(aux, port)
+
+	value[0] = aux
+
+	packet.SetRawAttr(NASPort, value)
+
+}
+
+func (packet *RadiusPacket) GetNASPortType() (bool, uint32) {
+
+	ok, data := packet.GetRawAttr(NASPortType)
+
+	if !ok || len(data) != 1 || len(data[0]) != 4 { //Not present or size unexpected
+		return false, 0
+	}
+
+	return true, binary.BigEndian.Uint32(data[0])
+
+}
+
+func (packet *RadiusPacket) SetNASPortType(portType uint32) {
+
+	value := make([][]byte, 1)
+	aux := make([]byte, 4)
+
+	binary.BigEndian.PutUint32(aux, portType)
+
+	value[0] = aux
+
+	packet.SetRawAttr(NASPortType, value)
+
+}
+
+func (packet *RadiusPacket) GetFramedMTU() (bool, uint32) {
+
+	ok, data := packet.GetRawAttr(FramedMTU)
+
+	if !ok || len(data) != 1 || len(data[0]) != 4 { //Not present or size unexpected
+		return false, 0
+	}
+
+	return true, binary.BigEndian.Uint32(data[0])
+
+}
+
+func (packet *RadiusPacket) SetFramedMTU(mtu uint32) {
+
+	value := make([][]byte, 1)
+	aux := make([]byte, 4)
+
+	binary.BigEndian.PutUint32(aux, mtu)
+
+	value[0] = aux
+
+	packet.SetRawAttr(FramedMTU, value)
 
 }
 
