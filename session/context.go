@@ -1,60 +1,84 @@
 package session
 
 import (
+	"fmt"
 	"net"
-	"sync"
 )
 
+type ContextStatus uint8
 type ContextSecretStatus uint8
 
 const (
-	SecretUnknown  ContextSecretStatus = 0
-	GuessingSecret ContextSecretStatus = 1
-	SecretOk       ContextSecretStatus = 2
+	SecretUnknown ContextSecretStatus = 0
+	SecretOk      ContextSecretStatus = 1
 )
+
+//TLSContext will hold the context of the TLS session originated by EAP-PEAP message
+//We create a loopback tunnel to be able to send the data generated
+//by TLS protocol into the EAP message instead of sending it directly to the network
+type TLSContext struct {
+	storedPayload []byte
+	payloadLen    uint32
+	session       *TLSSession
+}
+
+//EAPContext will hold the context of the EAP message exchange
+type EAPContext struct {
+	method   uint8
+	identity string
+	tls      *TLSContext
+}
 
 //ContextInfo defines the contextual data extracted from the communication between client-server session
 //This can be trivial data such as IP addresses or sensitive data such as the secret between NAS-Server
 //or session keys used between STA and NAS
 type ContextInfo struct {
-	server       net.UDPAddr
-	nas          net.UDPAddr
-	sta          []StaInfo
-	secret       string
-	secretStatus ContextSecretStatus
-	mutex        sync.Mutex
-}
-
-type StaInfo struct {
-	sta net.UDPAddr
-	key string
+	server          net.UDPAddr
+	nas             net.UDPAddr
+	nasPortType     uint32
+	nasPort         uint32
+	nasIP           net.IP
+	state           []byte
+	accSessionID    string
+	framedMTU       uint32
+	calledStation   string
+	callingStation  string
+	connectInfo     string
+	key             string
+	eap             EAPContext
+	lastServerMsgId byte   //ID for the illicit messages we are trying to generate from/to the Server
+	lastNASMsgId    byte   //ID for the illicit messages we are trying to generate from/to the NAS
+	userName        string //User name used by the STA to authenticate
+	secret          string
+	secretStatus    ContextSecretStatus
 }
 
 var contexts []*ContextInfo
-var contextsMutex sync.Mutex
 
-func AddContext(context *ContextInfo) {
+func AddContext(nas, server net.UDPAddr) {
 
-	contextsMutex.Lock()
+	context := &ContextInfo{
+		server:      server,
+		nas:         nas,
+		nasPortType: 0xFFFF,
+		nasPort:     0xFFFF,
+		framedMTU:   0,
+	}
+
+	context.eap.tls = new(TLSContext)
+
 	contexts = append(contexts, context)
-	contextsMutex.Unlock()
 
 }
 
 func GetContextByClient(client net.UDPAddr) *ContextInfo {
 
-	contextsMutex.Lock()
-	defer contextsMutex.Unlock()
-
 	for _, context := range contexts {
 		{
-			context.mutex.Lock()
 
 			if context.nas.IP.Equal(client.IP) && context.nas.Port == client.Port {
-				context.mutex.Unlock()
 				return context
 			}
-			context.mutex.Unlock()
 		}
 
 	}
@@ -63,10 +87,36 @@ func GetContextByClient(client net.UDPAddr) *ContextInfo {
 
 }
 
-func (context *ContextInfo) SetSecret(secret string) {
+func (context *ContextInfo) SetFramedMTU(framedMTU uint32) {
 
-	context.mutex.Lock()
-	defer context.mutex.Unlock()
+	context.framedMTU = framedMTU
+
+}
+
+func (context ContextInfo) GetFramedMTU() uint32 {
+
+	return context.framedMTU
+
+}
+
+func (context *ContextInfo) SetState(state []byte) {
+
+	context.state = make([]byte, len(state))
+	copy(context.state, state)
+
+}
+
+func (context ContextInfo) GetState() []byte {
+
+	retval := make([]byte, len(context.state))
+
+	copy(retval, context.state)
+
+	return retval
+
+}
+
+func (context *ContextInfo) SetSecret(secret string) {
 
 	context.secret = secret
 
@@ -78,10 +128,91 @@ func (context ContextInfo) GetSecret() string {
 
 }
 
-func (context *ContextInfo) SetSecretStatus(status ContextSecretStatus) {
+func (context *ContextInfo) SetAccSessionID(accSession string) {
 
-	context.mutex.Lock()
-	defer context.mutex.Unlock()
+	context.accSessionID = accSession
+
+}
+
+func (context ContextInfo) GetAccSessionID() string {
+
+	return context.accSessionID
+
+}
+
+func (context *ContextInfo) SetNasPort(nasPort uint32) {
+
+	context.nasPort = nasPort
+
+}
+
+func (context ContextInfo) GetNasPort() uint32 {
+
+	return context.nasPort
+
+}
+
+func (context *ContextInfo) SetNasIP(nasIP net.IP) {
+
+	context.nasIP = nasIP
+
+}
+
+func (context ContextInfo) GetNasIP() net.IP {
+
+	return context.nasIP
+
+}
+
+func (context *ContextInfo) SetNasPortType(portType uint32) {
+
+	context.nasPortType = portType
+
+}
+
+func (context ContextInfo) GetNasPortType() uint32 {
+
+	return context.nasPortType
+
+}
+
+func (context *ContextInfo) SetCalledStation(sta string) {
+
+	context.calledStation = sta
+
+}
+
+func (context ContextInfo) GetCalledStation() string {
+
+	return context.calledStation
+
+}
+
+func (context *ContextInfo) SetCallingStation(sta string) {
+
+	context.callingStation = sta
+
+}
+
+func (context ContextInfo) GetCallingStation() string {
+
+	return context.callingStation
+
+}
+
+func (context *ContextInfo) SetConnectInfo(info string) {
+
+	context.connectInfo = info
+
+}
+
+func (context ContextInfo) GetConnectInfo() string {
+
+	return context.connectInfo
+
+}
+
+func (context *ContextInfo) SetSecretStatus(status ContextSecretStatus) {
 
 	context.secretStatus = status
 
@@ -93,8 +224,108 @@ func (context ContextInfo) GetSecretStatus() ContextSecretStatus {
 
 }
 
-func (context ContextInfo) GetClient() net.UDPAddr {
+func (context *ContextInfo) SetEapMethod(method uint8) {
+
+	context.eap.method = method
+
+}
+
+func (context ContextInfo) GetEapMethod() uint8 {
+
+	return context.eap.method
+
+}
+
+func (context ContextInfo) GetNAS() net.UDPAddr {
 
 	return context.nas
+
+}
+
+func (context *ContextInfo) AddTLSPayload(payload []byte) {
+
+	fmt.Println("AddTLSPayload")
+
+	context.eap.tls.storedPayload = append(context.eap.tls.storedPayload, payload...)
+
+}
+
+func (context *ContextInfo) SetTLSLength(length uint32) {
+
+	context.eap.tls.payloadLen = length
+
+}
+
+func (context *ContextInfo) GetAndDeleteTLSPayloadAndLength() ([]byte, uint32) {
+
+	fmt.Println("GetAndDeleteTLSPayloadAndLength")
+
+	payload := context.eap.tls.storedPayload
+	length := context.eap.tls.payloadLen
+
+	context.eap.tls.storedPayload = nil
+	context.eap.tls.payloadLen = 0
+
+	return payload, length
+
+}
+
+func (context *ContextInfo) CreateTLSSession() {
+
+	context.eap.tls.session = NewTLSSession()
+
+}
+
+func (context *ContextInfo) GetTLSSession() *TLSSession {
+
+	return context.eap.tls.session
+
+}
+
+func (context ContextInfo) GetUserName() string {
+
+	return context.userName
+
+}
+
+func (context *ContextInfo) SetUserName(user string) {
+
+	context.userName = user
+
+}
+
+func (context ContextInfo) GetEAPIdentity() string {
+
+	return context.eap.identity
+
+}
+
+func (context *ContextInfo) SetEAPIdentity(identity string) {
+
+	context.eap.identity = identity
+
+}
+
+func (context ContextInfo) PrintInfo() {
+
+	fmt.Println("¡¡¡Context info!!!")
+
+	fmt.Println("NAS:", context.nas)
+	fmt.Println("Server:", context.server)
+
+	fmt.Println("Secret:", context.secret)
+
+	fmt.Println("NAS Port Type:", context.nasPortType)
+	fmt.Println("NAS Port:", context.nasPort)
+	fmt.Println("Called STA:", context.calledStation)
+
+	fmt.Println("Calling Station:", context.callingStation)
+	fmt.Println("User:", context.userName)
+
+	fmt.Println("Connect Info:", context.connectInfo)
+
+	fmt.Println("Accounting Session:", context.accSessionID)
+
+	fmt.Println("EAP identity:", context.eap.identity)
 
 }
