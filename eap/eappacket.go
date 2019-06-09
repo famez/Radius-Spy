@@ -1,6 +1,9 @@
 package eap
 
-import "encoding/binary"
+import (
+	"encoding/binary"
+	"fmt"
+)
 
 type EapCode uint8
 type EapType uint8
@@ -13,7 +16,9 @@ const (
 )
 
 const (
-	Peap EapType = 25
+	Identity  EapType = 1
+	LegacyNak EapType = 3
+	Peap      EapType = 25
 )
 
 type EapPacket interface {
@@ -28,6 +33,10 @@ func GetEAPByType(msgType EapType) EapPacket {
 	switch msgType {
 	case Peap:
 		return NewEapPeap()
+	case Identity:
+		return NewEapIdentity()
+	case LegacyNak:
+		return NewEapNak()
 	}
 
 	return &HeaderEap{}
@@ -58,10 +67,17 @@ func (packet *HeaderEap) Encode() (bool, []byte) {
 }
 
 func (packet *HeaderEap) Decode(buff []byte) bool {
+
+	length := binary.BigEndian.Uint16(buff[2:])
+
+	if length != uint16(len(buff)) {
+		fmt.Println("func (packet *HeaderEap) Decode(buff []byte). Length does not match")
+		return false
+	}
+
 	packet.code = EapCode(buff[0])
 	packet.id = uint8(buff[1])
 
-	length := binary.BigEndian.Uint16(buff[2:])
 	packet.length = length
 
 	if len(buff) > 4 && (packet.code == EAPRequest || packet.code == EAPResponse) {
@@ -78,6 +94,14 @@ func (packet *HeaderEap) GetId() uint8 {
 
 func (packet *HeaderEap) GetCode() EapCode {
 	return packet.code
+}
+
+func (packet *HeaderEap) SetId(id uint8) {
+	packet.id = id
+}
+
+func (packet *HeaderEap) SetCode(code EapCode) {
+	packet.code = code
 }
 
 func (packet *HeaderEap) GetType() EapType {
