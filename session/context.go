@@ -17,9 +17,11 @@ const (
 //We create a loopback tunnel to be able to send the data generated
 //by TLS protocol into the EAP message instead of sending it directly to the network
 type TLSContext struct {
-	storedPayload []byte
-	payloadLen    uint32
-	session       *TLSSession
+	storedNASPayload    []byte
+	nasPayloadLen       uint32
+	storedServerPayload []byte
+	serverPayloadLen    uint32
+	session             *TLSSession
 }
 
 //EAPContext will hold the context of the EAP message exchange
@@ -242,29 +244,57 @@ func (context ContextInfo) GetNAS() net.UDPAddr {
 
 }
 
-func (context *ContextInfo) AddTLSPayload(payload []byte) {
+func (context *ContextInfo) AddTLSNASPayload(payload []byte) {
 
-	fmt.Println("AddTLSPayload")
+	fmt.Println("AddTLSNASPayload")
 
-	context.eap.tls.storedPayload = append(context.eap.tls.storedPayload, payload...)
-
-}
-
-func (context *ContextInfo) SetTLSLength(length uint32) {
-
-	context.eap.tls.payloadLen = length
+	context.eap.tls.storedNASPayload = append(context.eap.tls.storedNASPayload, payload...)
 
 }
 
-func (context *ContextInfo) GetAndDeleteTLSPayloadAndLength() ([]byte, uint32) {
+func (context *ContextInfo) SetNASTLSLength(length uint32) {
 
-	fmt.Println("GetAndDeleteTLSPayloadAndLength")
+	context.eap.tls.nasPayloadLen = length
 
-	payload := context.eap.tls.storedPayload
-	length := context.eap.tls.payloadLen
+}
 
-	context.eap.tls.storedPayload = nil
-	context.eap.tls.payloadLen = 0
+func (context *ContextInfo) GetAndDeleteNASTLSPayloadAndLength() ([]byte, uint32) {
+
+	fmt.Println("GetAndDeleteNASTLSPayloadAndLength")
+
+	payload := context.eap.tls.storedNASPayload
+	length := context.eap.tls.nasPayloadLen
+
+	context.eap.tls.storedNASPayload = nil
+	context.eap.tls.nasPayloadLen = 0
+
+	return payload, length
+
+}
+
+func (context *ContextInfo) AddTLSServerPayload(payload []byte) {
+
+	fmt.Println("AddTLSServerPayload")
+
+	context.eap.tls.storedServerPayload = append(context.eap.tls.storedServerPayload, payload...)
+
+}
+
+func (context *ContextInfo) SetServerTLSLength(length uint32) {
+
+	context.eap.tls.serverPayloadLen = length
+
+}
+
+func (context *ContextInfo) GetAndDeleteServerTLSPayloadAndLength() ([]byte, uint32) {
+
+	fmt.Println("GetAndDeleteServerTLSPayloadAndLength")
+
+	payload := context.eap.tls.storedServerPayload
+	length := context.eap.tls.serverPayloadLen
+
+	context.eap.tls.storedServerPayload = nil
+	context.eap.tls.serverPayloadLen = 0
 
 	return payload, length
 
