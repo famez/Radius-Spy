@@ -78,6 +78,11 @@ func NewRadiusPacket() *RadiusPacket {
 		attrs:  nil,
 	}
 
+	//Initialize to 0
+	for index := range packet.authenticator {
+		packet.authenticator[index] = 0
+	}
+
 	return &packet
 
 }
@@ -215,9 +220,15 @@ func (packet *RadiusPacket) SetId(id uint8) {
 
 }
 
-func (packet *RadiusPacket) GetAuthenticator() [16]byte {
+func (packet RadiusPacket) GetAuthenticator() [16]byte {
 
 	return packet.authenticator
+
+}
+
+func (packet *RadiusPacket) SetAuthenticator(auth [16]byte) {
+
+	packet.authenticator = auth
 
 }
 
