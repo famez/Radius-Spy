@@ -6,16 +6,26 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"sync"
 )
 
 type TLSLocalTunnel struct {
-	tlsPeer net.Conn
-	rawPeer net.Conn
+	tlsPeer        net.Conn
+	rawPeer        net.Conn
+	readRawChannel chan []byte
+	readTLSChannel chan []byte
 }
 
 type TLSSession struct {
 	nasSideTunnel    TLSLocalTunnel
 	serverSideTunnel TLSLocalTunnel
+
+	tlsClientAvailable sync.WaitGroup
+
+	//To track the number of handshake packets that have been processed, so that we know if the 4-way handshake process has finished or not
+	nasHandshakeStat uint
+	//To track the number of handshake packets that have been processed, so that we know if the 4-way handshake process has finished or not
+	serverHandshakeStat uint
 }
 
 var tlsLocalListener net.Listener
@@ -25,7 +35,14 @@ func initLocalTLSServer() {
 
 	cer, err := tls.LoadX509KeyPair("TestKeys/server.crt", "TestKeys/server.key")
 
-	config := &tls.Config{Certificates: []tls.Certificate{cer}}
+	config := &tls.Config{
+		Certificates: []tls.Certificate{cer},
+		CipherSuites: []uint16{
+			tls.TLS_RSA_WITH_AES_128_CBC_SHA256,
+			tls.TLS_RSA_WITH_AES_256_CBC_SHA,
+			tls.TLS_RSA_WITH_3DES_EDE_CBC_SHA,
+		},
+	}
 	tlsLocalListener, err = tls.Listen("tcp", "localhost:400", config)
 	if err != nil {
 		log.Println(err)
@@ -45,6 +62,18 @@ func NewTLSSession() *TLSSession {
 
 	tlsSession := new(TLSSession)
 
+	tlsSession.nasHandshakeStat = 0
+	tlsSession.serverHandshakeStat = 0
+
+	//To know whether we have access to the TLS client or not as it is being initialized asynchronously
+	tlsSession.tlsClientAvailable.Add(1)
+
+	//Initialize read channels for asyncronous reads
+	tlsSession.nasSideTunnel.readRawChannel = make(chan []byte)
+	tlsSession.nasSideTunnel.readTLSChannel = make(chan []byte)
+	tlsSession.serverSideTunnel.readRawChannel = make(chan []byte)
+	tlsSession.serverSideTunnel.readTLSChannel = make(chan []byte)
+
 	var err error
 	tlsSession.nasSideTunnel.rawPeer, err = net.Dial("tcp", "localhost:400")
 	if err != nil {
@@ -55,15 +84,18 @@ func NewTLSSession() *TLSSession {
 	tlsSession.nasSideTunnel.tlsPeer, err = tlsLocalListener.Accept()
 
 	conf := &tls.Config{
-		//InsecureSkipVerify: true,
+		InsecureSkipVerify: true, //We are the attacker, so we "trust" the server.
 	}
-	go func() {
+	go func(waitgroup *sync.WaitGroup) {
 		tlsSession.serverSideTunnel.tlsPeer, err = tls.Dial("tcp", "localhost:401", conf)
 		if err != nil {
 			log.Println(err)
 		}
 		fmt.Println("SSL client OK")
-	}()
+
+		waitgroup.Done()
+
+	}(&tlsSession.tlsClientAvailable)
 
 	tlsSession.serverSideTunnel.rawPeer, err = tcpLocalListener.Accept()
 
@@ -95,15 +127,19 @@ func handleConnection(conn net.Conn) {
 	}
 }
 
-func (tunnel *TLSLocalTunnel) transmit(from, to net.Conn, data []byte) []byte {
+func (tunnel TLSLocalTunnel) transmit(con net.Conn, data []byte) {
 
 	if data != nil {
-		from.Write(data)
+		con.Write(data)
 	}
+
+}
+
+func (tunnel TLSLocalTunnel) receive(con net.Conn) []byte {
 
 	rxData := make([]byte, 65535)
 
-	size, err := to.Read(rxData)
+	size, err := con.Read(rxData)
 
 	if err != nil {
 		log.Println(err)
@@ -117,30 +153,93 @@ func (tunnel *TLSLocalTunnel) transmit(from, to net.Conn, data []byte) []byte {
 
 }
 
-func (tunnel *TLSLocalTunnel) tLSToRaw(tls []byte) []byte {
+func (tunnel TLSLocalTunnel) WriteTls(tls []byte) {
 
-	return tunnel.transmit(tunnel.tlsPeer, tunnel.rawPeer, tls)
-
-}
-
-func (tunnel *TLSLocalTunnel) rawToTLS(tls []byte) []byte {
-
-	return tunnel.transmit(tunnel.rawPeer, tunnel.tlsPeer, tls)
+	tunnel.transmit(tunnel.tlsPeer, tls)
 
 }
 
-func (session *TLSSession) NASRawToTLS(data []byte) []byte {
-	return session.nasSideTunnel.rawToTLS(data)
+func (tunnel TLSLocalTunnel) WriteRaw(raw []byte) {
+
+	tunnel.transmit(tunnel.rawPeer, raw)
+
 }
 
-func (session *TLSSession) NASTLSToRaw(data []byte) []byte {
-	return session.nasSideTunnel.tLSToRaw(data)
+func (tunnel TLSLocalTunnel) ReadTls() []byte {
+
+	return tunnel.receive(tunnel.tlsPeer)
+
 }
 
-func (session *TLSSession) ServerRawToTLS(data []byte) []byte {
-	return session.serverSideTunnel.rawToTLS(data)
+func (tunnel TLSLocalTunnel) ReadRaw() []byte {
+
+	return tunnel.receive(tunnel.rawPeer)
+
 }
 
-func (session *TLSSession) ServerTLSToRaw(data []byte) []byte {
-	return session.serverSideTunnel.tLSToRaw(data)
+func (tunnel TLSLocalTunnel) ReadTlsAsync() {
+
+	go func() {
+		buff := tunnel.receive(tunnel.tlsPeer)
+
+		if buff != nil {
+			tunnel.readTLSChannel <- buff
+		}
+
+	}()
+
+}
+
+func (tunnel TLSLocalTunnel) ReadRawAysnc() {
+
+	go func() {
+
+		buff := tunnel.receive(tunnel.rawPeer)
+
+		if buff != nil {
+			tunnel.readRawChannel <- buff
+		}
+
+	}()
+
+}
+
+func (tunnel TLSLocalTunnel) GetReadRawChannel() chan []byte {
+	return tunnel.readRawChannel
+}
+
+func (tunnel TLSLocalTunnel) GetReadTLSChannel() chan []byte {
+	return tunnel.readTLSChannel
+}
+
+func (session TLSSession) ReadTLSFromServer() []byte {
+
+	session.tlsClientAvailable.Wait()
+
+	return session.serverSideTunnel.ReadTls()
+
+}
+
+func (session TLSSession) GetNASTunnel() TLSLocalTunnel {
+	return session.nasSideTunnel
+}
+
+func (session TLSSession) GetServerTunnel() TLSLocalTunnel {
+	return session.serverSideTunnel
+}
+
+func (session TLSSession) GetNASHandShakeStatus() uint {
+	return session.nasHandshakeStat
+}
+
+func (session *TLSSession) SetNASHandShakeStatus(status uint) {
+	session.nasHandshakeStat = status
+}
+
+func (session TLSSession) GetServerHandShakeStatus() uint {
+	return session.serverHandshakeStat
+}
+
+func (session *TLSSession) SetServerHandShakeStatus(status uint) {
+	session.serverHandshakeStat = status
 }
