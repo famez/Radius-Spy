@@ -26,8 +26,16 @@ func NewEapPeap() *EapPeap {
 		length:  6,
 	}
 
+	flags := PeapFlags{
+		length:   false,
+		moreFrag: false,
+		start:    false,
+		version:  0,
+	}
+
 	peap := &EapPeap{
 		header: header,
+		flags:  flags,
 	}
 
 	return peap
