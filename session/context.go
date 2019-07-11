@@ -48,8 +48,10 @@ type ContextInfo struct {
 	connectInfo     string
 	key             string
 	eap             EAPContext
-	lastServerMsgId byte   //ID for the illicit messages we are trying to generate from/to the Server
-	lastNASMsgId    byte   //ID for the illicit messages we are trying to generate from/to the NAS
+	lastServerMsgId byte   //Id for the illicit messages we are trying to generate from/to the Server
+	lastNASMsgId    byte   //Id for the illicit messages we are trying to generate from/to the NAS
+	lastServerEapId byte   //Id for Eap messages from server
+	lastNASEapId    byte   //Id for Eap messages from NAS
 	userName        string //User name used by the STA to authenticate
 	secret          string
 	secretStatus    ContextSecretStatus
@@ -86,6 +88,54 @@ func GetContextByClient(client net.UDPAddr) *ContextInfo {
 	}
 
 	return nil
+
+}
+
+func (context *ContextInfo) SetLastServerEapId(id byte) {
+
+	context.lastServerEapId = id
+
+}
+
+func (context ContextInfo) GetLastServerEapId() byte {
+
+	return context.lastServerEapId
+
+}
+
+func (context *ContextInfo) SetLastNASEapId(id byte) {
+
+	context.lastNASEapId = id
+
+}
+
+func (context ContextInfo) GetLastNASEapId() byte {
+
+	return context.lastNASEapId
+
+}
+
+func (context *ContextInfo) SetLastServerMsgId(id byte) {
+
+	context.lastServerMsgId = id
+
+}
+
+func (context ContextInfo) GetLastServerMsgId() byte {
+
+	return context.lastServerMsgId
+
+}
+
+func (context *ContextInfo) SetLastNASMsgId(id byte) {
+
+	context.lastNASMsgId = id
+
+}
+
+func (context ContextInfo) GetLastNASMsgId() byte {
+
+	return context.lastNASMsgId
 
 }
 
