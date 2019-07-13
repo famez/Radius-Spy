@@ -263,6 +263,34 @@ func (packet *RadiusPacket) GetRawAttr(attrType AttrType) (bool, [][]byte) {
 
 }
 
+//DelRawAttr deletes an attribute given its type
+func (packet *RadiusPacket) DelRawAttr(attrType AttrType) {
+
+	var pos, attrPos, attrNum int
+	var attr Attribute
+
+	attrNum = 0
+	attrPos = len(packet.attrs)
+
+	//Loop to find every attribute whose type matches
+	for pos, attr = range packet.attrs {
+		if attr.attrType == attrType {
+			if attrNum == 0 {
+				attrPos = pos
+			}
+			attrNum++
+			packet.length -= uint16(len(attr.value) + 2)
+		} else if attrNum != 0 {
+			break
+		}
+	}
+
+	if attrPos != len(packet.attrs) {
+		copy(packet.attrs[attrPos:], packet.attrs[attrPos+attrNum:])
+		packet.attrs = packet.attrs[:len(packet.attrs)-attrNum]
+	}
+}
+
 func (packet *RadiusPacket) SetRawAttr(attrType AttrType, data [][]byte) {
 
 	var pos, attrPos, attrNum int
