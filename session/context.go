@@ -48,11 +48,12 @@ type ContextInfo struct {
 	connectInfo     string
 	key             string
 	eap             EAPContext
-	lastServerMsgId byte   //Id for the illicit messages we are trying to generate from/to the Server
-	lastNASMsgId    byte   //Id for the illicit messages we are trying to generate from/to the NAS
-	lastServerEapId byte   //Id for Eap messages from server
-	lastNASEapId    byte   //Id for Eap messages from NAS
-	userName        string //User name used by the STA to authenticate
+	lastServerMsgId byte     //Id for the illicit messages we are trying to generate from/to the Server
+	lastNASMsgId    byte     //Id for the illicit messages we are trying to generate from/to the NAS
+	lastServerEapId byte     //Id for Eap messages from server
+	lastNASEapId    byte     //Id for Eap messages from NAS
+	lastAuthMsg     [16]byte //The last auth msg got from the client
+	userName        string   //User name used by the STA to authenticate
 	secret          string
 	secretStatus    ContextSecretStatus
 }
@@ -88,6 +89,18 @@ func GetContextByClient(client net.UDPAddr) *ContextInfo {
 	}
 
 	return nil
+
+}
+
+func (context *ContextInfo) SetLastAuthMsg(authMsg [16]byte) {
+
+	context.lastAuthMsg = authMsg
+
+}
+
+func (context ContextInfo) GetLastAuthMsg() [16]byte {
+
+	return context.lastAuthMsg
 
 }
 
