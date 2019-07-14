@@ -26,9 +26,10 @@ type TLSContext struct {
 
 //EAPContext will hold the context of the EAP message exchange
 type EAPContext struct {
-	method   uint8
-	identity string
-	tls      *TLSContext
+	method      uint8
+	identity    string
+	tls         *TLSContext
+	peapVersion byte
 }
 
 //ContextInfo defines the contextual data extracted from the communication between client-server session
@@ -298,6 +299,18 @@ func (context *ContextInfo) SetEapMethod(method uint8) {
 func (context ContextInfo) GetEapMethod() uint8 {
 
 	return context.eap.method
+
+}
+
+func (context *ContextInfo) SetPeapVersion(version byte) {
+
+	context.eap.peapVersion = version
+
+}
+
+func (context ContextInfo) GetPeapVersion() byte {
+
+	return context.eap.peapVersion
 
 }
 
