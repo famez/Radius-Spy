@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/rand"
+	"encoding/binary"
 	"encoding/hex"
 	"flag"
 	"fmt"
@@ -16,8 +17,7 @@ import (
 type delayedTLSData struct {
 	tlsContent     []byte
 	context        *session.ContextInfo
-	msgID          uint8
-	eapID          uint8
+	peapPacket     *eap.EapPeap
 	clientToServer bool
 }
 
@@ -32,21 +32,20 @@ const wireless80211Port = 19
 
 var mySession session.Session
 
-func forwardOrDelayTLSData(tlsContent []byte, context *session.ContextInfo, msgID uint8, eapID uint8, clientToServer bool) {
+func forwardOrDelayTLSData(tlsContent []byte, context *session.ContextInfo, peapPacket *eap.EapPeap, clientToServer bool) {
 
 	tlsSession := context.GetTLSSession()
 
 	tlsChunk := delayedTLSData{
 		tlsContent:     tlsContent,
 		context:        context,
-		msgID:          msgID,
-		eapID:          eapID,
+		peapPacket:     peapPacket,
 		clientToServer: clientToServer,
 	}
 
 	if (clientToServer && tlsSession.GetServerHandShakeStatus() > 2) || (!clientToServer && tlsSession.GetNASHandShakeStatus() > 2) {
 		fmt.Println("TLS Data forwarded", clientToServer)
-		onTLSData(tlsContent, context, msgID, eapID, clientToServer)
+		onTLSData(tlsContent, context, peapPacket, clientToServer)
 	} else {
 		fmt.Println("TLS Data delayed", clientToServer)
 		delayedTLSChunks = append(delayedTLSChunks, tlsChunk)
@@ -63,7 +62,8 @@ func deliverDelayedTLSData(clientToServer bool) {
 		if delayedTLSChunks[i].clientToServer == clientToServer {
 			fmt.Println("TLS Data delivered", clientToServer)
 			onTLSData(delayedTLSChunks[i].tlsContent, delayedTLSChunks[i].context,
-				delayedTLSChunks[i].msgID, delayedTLSChunks[i].eapID, delayedTLSChunks[i].clientToServer)
+				delayedTLSChunks[i].peapPacket,
+				delayedTLSChunks[i].clientToServer)
 
 			delayedTLSChunks = append(delayedTLSChunks[:i], delayedTLSChunks[i+1:]...)
 		} else {
@@ -252,6 +252,9 @@ func manglePacket(manglePacket *radius.RadiusPacket, from net.UDPAddr, to net.UD
 
 					case eap.Peap:
 						peapPacket := eapPacket.(*eap.EapPeap)
+						//Set PEAP version
+						context.SetPeapVersion(peapPacket.GetVersionFlag())
+
 						if manglePacket.GetCode() == radius.AccessChallenge && peapPacket.GetCode() == eap.EAPRequest {
 							forward = manageServerPeap(manglePacket, from, to, peapPacket, context, clientToServer)
 						}
@@ -385,7 +388,7 @@ func manageServerPeap(manglePacket *radius.RadiusPacket, from net.UDPAddr, to ne
 				//TLS Payload to handle
 				tlsContent := tlsSession.ReadTLSFromServer()
 
-				forwardOrDelayTLSData(tlsContent, context, manglePacket.GetId(), peapPacket.GetId(), clientToServer)
+				forwardOrDelayTLSData(tlsContent, context, peapPacket, clientToServer)
 
 			}
 
@@ -478,12 +481,12 @@ func manageNASPeap(manglePacket *radius.RadiusPacket, from net.UDPAddr, to net.U
 				//First message after Handshake
 				//Get the asynchronous data
 				tlsContent := <-tlsSession.GetNASTunnel().GetReadTLSChannel()
-				forwardOrDelayTLSData(tlsContent, context, manglePacket.GetId(), peapPacket.GetId(), clientToServer)
+				forwardOrDelayTLSData(tlsContent, context, peapPacket, clientToServer)
 				tlsSession.SetNASHandShakeStatus(4)
 			} else {
 
 				tlsContent := tlsSession.GetNASTunnel().ReadTls()
-				forwardOrDelayTLSData(tlsContent, context, manglePacket.GetId(), peapPacket.GetId(), clientToServer)
+				forwardOrDelayTLSData(tlsContent, context, peapPacket, clientToServer)
 
 			}
 
@@ -567,8 +570,13 @@ func craftPacketFromTLSPayload(context *session.ContextInfo, payload []byte, msg
 }
 
 //This method will receive the content of the TLS session in clear text, no ciphers
-func onTLSData(tlsContent []byte, context *session.ContextInfo, msgID uint8, eapID uint8, clientToServer bool) {
-	fmt.Println("onTLSData. Data:", hex.Dump(tlsContent))
+func onTLSData(tlsContent []byte, context *session.ContextInfo,
+	outerPeapPckt *eap.EapPeap, clientToServer bool) {
+
+	var eapHeader eap.HeaderEap
+
+	fmt.Println("onTLSData. Data:")
+	fmt.Println(hex.Dump(tlsContent))
 
 	//Forward TLS data
 	tlsSession := context.GetTLSSession()
@@ -597,6 +605,53 @@ func onTLSData(tlsContent []byte, context *session.ContextInfo, msgID uint8, eap
 
 	//Send crafted packet
 	mySession.SendPacket(craftedPacket, clientToServer)
+
+	//End forward TLS data
+
+	//Start decoding the unencrypted phase 2 tunneled PEAP payload
+	//The tunneled payload, which is in cleartext, contains also an EAP message
+	//inside the tunneled EAP message a more insecure method is used, for example
+	//MsCHAPv2 or GTC and so on.
+
+	//Treat the case in which the header of EAP packet is not included
+	//inside the tunnel, but rather the outer EAP header is reused.
+	skipChange := false
+
+	//PEAP version equals to 0 does not include the inner EAP header inside the tunnel.
+	if context.GetPeapVersion() != 0 {
+		skipChange = true
+	}
+
+	//If PEAP version = 0, check whether the method is identity.
+	//In this case, the inner header is already included.
+	if !skipChange && len(tlsContent) == 5 && eap.EapCode(tlsContent[0]) == eap.EAPRequest {
+		if ok := eapHeader.Decode(tlsContent); ok {
+			if eapHeader.GetType() == eap.Identity && eapHeader.GetLength() == 5 {
+				skipChange = true
+			}
+		}
+	}
+
+	//Add the outer EAP message (phase 1, PEAP) header as the inner eap header.
+	if !skipChange {
+
+		header := make([]byte, 4)
+
+		//Eap code
+		header[0] = byte(outerPeapPckt.GetCode())
+		//Eap ID (received Eap ID)
+		header[1] = byte(outerPeapPckt.GetId())
+
+		//Eap length = payload + 4 bytes appended at the beginning
+		//which correspond with the outer PEAP header
+		binary.BigEndian.PutUint16(header[2:], uint16(len(tlsContent))+4)
+		tlsContent = append(header, tlsContent...)
+	}
+
+	fmt.Println("onTLSData. Treated data:")
+	fmt.Println(hex.Dump(tlsContent))
+
+	//End decoding tunneled data
 
 }
 
