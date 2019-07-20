@@ -20,7 +20,14 @@ func NewEapIdentity() *EapIdentity {
 }
 
 func (packet *EapIdentity) Encode() (bool, []byte) {
-	return packet.header.Encode()
+	ok, buff := packet.header.Encode()
+
+	if ok {
+		copy(buff[5:], packet.identity)
+	}
+
+	return true, buff
+
 }
 
 func (packet *EapIdentity) Decode(buff []byte) bool {
