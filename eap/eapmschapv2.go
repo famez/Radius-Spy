@@ -23,6 +23,8 @@ type EapMSCHAPv2 struct {
 	message string
 }
 
+const msChapV2respLen = 49 //Fixed length for MsChapV2 response packet
+
 func NewEapMsChapV2() *EapMSCHAPv2 {
 
 	header := HeaderEap{
@@ -182,6 +184,7 @@ func (packet EapMSCHAPv2) GetMessage() string {
 	return packet.message
 }
 
+//GetAuthChallenge returns the field auth challenge from a challenge packet
 func (packet EapMSCHAPv2) GetAuthChallenge() []byte {
 
 	if packet.GetCode() != EAPRequest || packet.opCode != MsChapV2Challenge {
@@ -193,5 +196,34 @@ func (packet EapMSCHAPv2) GetAuthChallenge() []byte {
 	copy(retVal, packet.value)
 
 	return retVal
+
+}
+
+//GetResponse Returns the response field from a response packet
+func (packet EapMSCHAPv2) GetResponse() []byte {
+
+	if packet.GetCode() != EAPResponse || packet.opCode != MsChapV2Response {
+		return nil //The packet does not contain a response field
+	}
+
+	retVal := make([]byte, len(packet.value))
+
+	copy(retVal, packet.value)
+
+	return retVal
+
+}
+
+func MSCHAPv2ExtractFromResponse(response []byte) ([]byte, []byte, byte) {
+
+	if len(response) != msChapV2respLen {
+		return nil, nil, 0
+	}
+
+	peerChallenge := response[:16]
+	ntResponse := response[24:48]
+	flags := response[48]
+
+	return peerChallenge, ntResponse, flags
 
 }
