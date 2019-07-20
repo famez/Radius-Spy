@@ -30,6 +30,14 @@ type EAPContext struct {
 	identity    string
 	tls         *TLSContext
 	peapVersion byte
+	msChap      MsChapV2Context
+}
+
+//MsChapV2Context Context to track the challenge-response process
+type MsChapV2Context struct {
+	authChallenge [16]byte
+	peerChallenge [16]byte
+	ntResponse    [24]byte
 }
 
 //ContextInfo defines the contextual data extracted from the communication between client-server session
@@ -409,6 +417,47 @@ func (context ContextInfo) GetEAPIdentity() string {
 func (context *ContextInfo) SetEAPIdentity(identity string) {
 
 	context.eap.identity = identity
+
+}
+
+func (context ContextInfo) GetMsChapV2AuthChallenge() [16]byte {
+
+	return context.eap.msChap.authChallenge
+
+}
+
+func (context *ContextInfo) SetMsChapV2AuthChallenge(challenge []byte) {
+
+	if len(challenge) == 16 {
+		copy(context.eap.msChap.authChallenge[:], challenge)
+	}
+
+}
+
+func (context ContextInfo) GetMsChapV2PeerChallenge() [16]byte {
+
+	return context.eap.msChap.peerChallenge
+
+}
+
+func (context *ContextInfo) SetMsChapV2PeerChallenge(challenge []byte) {
+	if len(challenge) == 16 {
+		copy(context.eap.msChap.peerChallenge[:], challenge)
+	}
+
+}
+
+func (context ContextInfo) GetMsChapV2NTResponse() [24]byte {
+
+	return context.eap.msChap.ntResponse
+
+}
+
+func (context *ContextInfo) SetMsChapV2NTResponse(response []byte) {
+
+	if len(response) == 16 {
+		copy(context.eap.msChap.ntResponse[:], response)
+	}
 
 }
 
