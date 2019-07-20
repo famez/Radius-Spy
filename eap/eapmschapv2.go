@@ -160,24 +160,38 @@ func (packet *EapMSCHAPv2) GetType() EapType {
 	return packet.header.GetType()
 }
 
-func (packet *EapMSCHAPv2) GetOpCode() MsChapV2OpCode {
+func (packet EapMSCHAPv2) GetOpCode() MsChapV2OpCode {
 	return packet.opCode
 }
 
-func (packet *EapMSCHAPv2) GetMsgID() uint8 {
+func (packet EapMSCHAPv2) GetMsgID() uint8 {
 	return packet.msID
 }
 
-func (packet *EapMSCHAPv2) GetValue() []byte {
+func (packet EapMSCHAPv2) GetValue() []byte {
 	retVal := make([]byte, len(packet.value))
 	copy(retVal, packet.value)
 	return retVal
 }
 
-func (packet *EapMSCHAPv2) GetName() string {
+func (packet EapMSCHAPv2) GetName() string {
 	return packet.name
 }
 
-func (packet *EapMSCHAPv2) GetMessage() string {
+func (packet EapMSCHAPv2) GetMessage() string {
 	return packet.message
+}
+
+func (packet EapMSCHAPv2) GetAuthChallenge() []byte {
+
+	if packet.GetCode() != EAPRequest || packet.opCode != MsChapV2Challenge {
+		return nil //The packet does not contain an auth challenge token
+	}
+
+	retVal := make([]byte, len(packet.value))
+
+	copy(retVal, packet.value)
+
+	return retVal
+
 }
