@@ -651,6 +651,43 @@ func onTLSData(tlsContent []byte, context *session.ContextInfo,
 	fmt.Println("onTLSData. Treated data:")
 	fmt.Println(hex.Dump(tlsContent))
 
+	//Once we added the missing data, we can proceed to decode the tunneled EAP message.
+
+	fmt.Println("Decoding inner EAP message")
+
+	if ok := eapHeader.Decode(tlsContent); ok {
+		fmt.Println("Inner EAP header decoded-->")
+		fmt.Println("Code:", eapHeader.GetCode(), ", ID:", eapHeader.GetId())
+
+		if eapHeader.GetCode() == eap.EAPRequest || eapHeader.GetCode() == eap.EAPResponse {
+			fmt.Println("Method:", eapHeader.GetType())
+
+			eapPacket := eap.GetEAPByType(eapHeader.GetType())
+
+			if ok := eapPacket.Decode(tlsContent); ok {
+				fmt.Println("Inner EAP Decoded")
+
+				switch eapPacket.GetType() {
+				case eap.MsChapv2:
+					fmt.Println("Method MSChapv2")
+
+					msChapv2Packet := eapPacket.(*eap.EapMSCHAPv2)
+
+					fmt.Println("MSChapv2 OpcCode:", msChapv2Packet.GetOpCode())
+					fmt.Println("MSChapv2 MsID:", msChapv2Packet.GetMsgID())
+
+					fmt.Println("MSChapv2 Value:")
+					fmt.Println(hex.Dump(msChapv2Packet.GetValue()))
+
+					fmt.Println("MSChapv2 Name:", msChapv2Packet.GetName())
+					fmt.Println("MSChapv2 Message:", msChapv2Packet.GetMessage())
+
+					//fmt.Println("MSChapV2 Decoded. OpCode:", msChapv2Packet.GetOpCode())
+				}
+			}
+		}
+	}
+
 	//End decoding tunneled data
 
 }
