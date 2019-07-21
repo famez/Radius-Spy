@@ -38,6 +38,7 @@ type MsChapV2Context struct {
 	authChallenge [16]byte
 	peerChallenge [16]byte
 	ntResponse    [24]byte
+	serverMessage string
 }
 
 //ContextInfo defines the contextual data extracted from the communication between client-server session
@@ -455,9 +456,23 @@ func (context ContextInfo) GetMsChapV2NTResponse() [24]byte {
 
 func (context *ContextInfo) SetMsChapV2NTResponse(response []byte) {
 
-	if len(response) == 16 {
+	if len(response) == 24 {
 		copy(context.eap.msChap.ntResponse[:], response)
 	}
+
+}
+
+//GetServerMessage message sent from the server to the peer to prove that the server can be trusted
+// as they share both the password.
+func (context ContextInfo) GetServerMessage() string {
+
+	return context.eap.msChap.serverMessage
+
+}
+
+func (context *ContextInfo) SetServerMessage(serverMessage string) {
+
+	context.eap.msChap.serverMessage = serverMessage
 
 }
 
