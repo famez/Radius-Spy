@@ -693,13 +693,13 @@ func manageMsChapV2(packet *eap.EapMSCHAPv2, context *session.ContextInfo) {
 	}
 
 	switch packet.GetOpCode() {
-	case eap.MsChapV2Challenge:
+	case eap.MsChapV2Challenge: //Server sends a challenge request
 		fmt.Println("Received auth challenge:")
 		fmt.Println(hex.Dump(packet.GetAuthChallenge()))
 
 		context.SetMsChapV2AuthChallenge(packet.GetAuthChallenge())
 
-	case eap.MsChapV2Response:
+	case eap.MsChapV2Response: //Peer sends a challenge response
 		fmt.Println("Received response")
 		peerChallenge, ntResponse, _ := eap.MSCHAPv2ExtractFromResponse(packet.GetResponse())
 
@@ -720,6 +720,25 @@ func manageMsChapV2(packet *eap.EapMSCHAPv2, context *session.ContextInfo) {
 		fmt.Println("Local NT-Response:")
 
 		fmt.Println(hex.Dump(calculatedResponse))
+
+	case eap.MsChapV2Success:
+
+		if packet.GetCode() == eap.EAPRequest { //Server sends a success request
+
+			fmt.Println("Received Success request")
+			fmt.Println("Message from server:", packet.GetMessage())
+
+			context.SetServerMessage(packet.GetMessage())
+
+			//Calculate ourselves the result of the message field
+
+			calcMessage := eap.MsChapV2GenerateAuthenticatorResponse("password", context.GetMsChapV2NTResponse(),
+				context.GetMsChapV2PeerChallenge(), context.GetMsChapV2AuthChallenge(), context.GetUserName())
+
+			fmt.Println("Calculated message:", calcMessage)
+
+		}
+
 	}
 
 }
