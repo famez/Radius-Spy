@@ -24,6 +24,10 @@ var magic2 = [...]byte{0x50, 0x61, 0x64, 0x20, 0x74, 0x6F, 0x20, 0x6D, 0x61, 0x6
 	0x65, 0x20, 0x69, 0x74, 0x65, 0x72, 0x61, 0x74, 0x69, 0x6F,
 	0x6E}
 
+var keyMagic1 = [...]byte{0x54, 0x68, 0x69, 0x73, 0x20, 0x69, 0x73, 0x20, 0x74,
+	0x68, 0x65, 0x20, 0x4d, 0x50, 0x50, 0x45, 0x20, 0x4d,
+	0x61, 0x73, 0x74, 0x65, 0x72, 0x20, 0x4b, 0x65, 0x79}
+
 //rfc2759 8.2
 func msChapV2CryptoChallengeHash(peerChallenge, authChallenge [16]byte, username string) []byte {
 
@@ -182,4 +186,28 @@ func MsChapV2GenerateAuthenticatorResponse(password string, ntResponse [24]byte,
 	message = "S=" + strings.ToUpper(message)
 
 	return message
+}
+
+//rfc3079 3.4.  Key Derivation Functions
+func MsChapV2GetMasterKey(psswdHashHash, ntResponse []byte) []byte {
+
+	hsha1 := sha1.New()
+
+	hsha1.Write(psswdHashHash)
+	hsha1.Write(ntResponse)
+	hsha1.Write(keyMagic1[:])
+
+	digest := hsha1.Sum(nil)
+
+	return digest[:16]
+
+}
+
+func MsChapV2GetMasterKeyFromPsswd(password string, ntResponse []byte) []byte {
+
+	psswHashHash := msChapV2CryptoHashNtPasswordHash(
+		msChapV2CryptoNtPasswordHash(password))
+
+	return MsChapV2GetMasterKey(psswHashHash, ntResponse)
+
 }
