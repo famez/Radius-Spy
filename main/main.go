@@ -713,6 +713,13 @@ func manageMsChapV2(packet *eap.EapMSCHAPv2, context *session.ContextInfo) {
 
 		context.SetMsChapV2NTResponse(ntResponse)
 
+		fmt.Println("Calculating Master key")
+
+		masterKey := eap.MsChapV2GetMasterKeyFromPsswd("password", ntResponse)
+
+		fmt.Println("Calculated Master Key:")
+		fmt.Println(hex.Dump(masterKey))
+
 		fmt.Println("Generating local NT-Response from intercepted data")
 
 		calculatedResponse := eap.MsChapV2GenerateNTResponse(context.GetMsChapV2AuthChallenge(), context.GetMsChapV2PeerChallenge(), context.GetUserName(), "password")
