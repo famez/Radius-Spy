@@ -713,13 +713,6 @@ func manageMsChapV2(packet *eap.EapMSCHAPv2, context *session.ContextInfo) {
 
 		context.SetMsChapV2NTResponse(ntResponse)
 
-		fmt.Println("Calculating Master key")
-
-		masterKey := eap.MsChapV2GetMasterKeyFromPsswd("password", ntResponse)
-
-		fmt.Println("Calculated Master Key:")
-		fmt.Println(hex.Dump(masterKey))
-
 		fmt.Println("Generating local NT-Response from intercepted data")
 
 		calculatedResponse := eap.MsChapV2GenerateNTResponse(context.GetMsChapV2AuthChallenge(), context.GetMsChapV2PeerChallenge(), context.GetUserName(), "password")
@@ -727,6 +720,25 @@ func manageMsChapV2(packet *eap.EapMSCHAPv2, context *session.ContextInfo) {
 		fmt.Println("Local NT-Response:")
 
 		fmt.Println(hex.Dump(calculatedResponse))
+
+		fmt.Println("Calculating Master key")
+
+		masterKey := eap.MsChapV2GetMasterKeyFromPsswd("password", ntResponse)
+
+		fmt.Println("Calculated Master Key:")
+		fmt.Println(hex.Dump(masterKey))
+
+		fmt.Println("Calculating Send key")
+
+		sendKey := eap.MsChapV2GetSendKey(masterKey)
+		fmt.Println("Calculated Send Key:")
+		fmt.Println(hex.Dump(sendKey))
+
+		fmt.Println("Calculating Receive key")
+
+		receiveKey := eap.MsChapV2GetReceiveKey(masterKey)
+		fmt.Println("Calculated Receive Key:")
+		fmt.Println(hex.Dump(receiveKey))
 
 	case eap.MsChapV2Success:
 
