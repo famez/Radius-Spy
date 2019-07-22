@@ -20,6 +20,7 @@ const (
 	LegacyNak EapType = 3
 	Peap      EapType = 25
 	MsChapv2  EapType = 26
+	TLV       EapType = 33
 )
 
 type EapPacket interface {
@@ -40,6 +41,8 @@ func GetEAPByType(msgType EapType) EapPacket {
 		return NewEapNak()
 	case MsChapv2:
 		return NewEapMsChapV2()
+	case TLV:
+		return NewEapTLVResult()
 	}
 
 	return &HeaderEap{}
