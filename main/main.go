@@ -632,6 +632,15 @@ func onTLSData(tlsContent []byte, context *session.ContextInfo,
 		}
 	}
 
+	if !skipChange && len(tlsContent) >= 5 {
+		if ok := eapHeader.Decode(tlsContent); ok {
+			if eapHeader.GetType() == eap.TLV {
+				skipChange = true
+			}
+		}
+
+	}
+
 	//Add the outer EAP message (phase 1, PEAP) header as the inner eap header.
 	if !skipChange {
 
@@ -674,6 +683,13 @@ func onTLSData(tlsContent []byte, context *session.ContextInfo,
 					msChapv2Packet := eapPacket.(*eap.EapMSCHAPv2)
 
 					manageMsChapV2(msChapv2Packet, context)
+
+				case eap.TLV:
+					fmt.Println("Method TLV result")
+
+					tlvEap := eapPacket.(*eap.EapTLVResult)
+
+					fmt.Println("Result:", tlvEap.GetResult())
 
 				}
 			}
