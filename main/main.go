@@ -207,7 +207,18 @@ func manglePacket(manglePacket *radius.RadiusPacket, from net.UDPAddr, to net.UD
 					//If we receive a Access Accept message, recalculate the authenticator field to make it valid to the NAS.
 					//We must also modify the IDs of the messages
 					if manglePacket.GetCode() == radius.AccessAccept {
-						manglePacket.DelRawAttr(26) //Remove vendor specific attrs
+
+						//Obtain the MPPE keys
+						if ok, rcvKey := manglePacket.GetMSMPPERecvKey(); ok {
+							fmt.Println("Recv key")
+							fmt.Println(hex.Dump(rcvKey))
+						}
+
+						if ok, sndKey := manglePacket.GetMSMPPESendKey(); ok {
+							fmt.Println("Send key")
+							fmt.Println(hex.Dump(sndKey))
+						}
+
 						manglePacket.SetId(context.GetLastNASMsgId())
 						radius.RecalculateMsgAuth(manglePacket, context.GetLastAuthMsg(), context.GetSecret())
 

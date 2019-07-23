@@ -25,6 +25,7 @@ const (
 	NASPort              AttrType = 5
 	FramedMTU            AttrType = 12
 	StateAttr            AttrType = 24
+	VendorSpecific       AttrType = 26
 	CalledStationId      AttrType = 30
 	CallingStationId     AttrType = 31
 	AccountSessionId     AttrType = 44
@@ -42,6 +43,11 @@ const maxAttrSize = 255
 type Attribute struct {
 	attrType AttrType
 	value    []byte
+}
+
+type VendorSpecificAttr struct {
+	vType   uint8
+	content []byte
 }
 
 /*
@@ -342,6 +348,94 @@ func (packet *RadiusPacket) SetRawAttr(attrType AttrType, data [][]byte) {
 		attrPos++
 
 	}
+
+}
+
+func (packet *RadiusPacket) GetVendorSpecificAttrs(id uint32) (bool, []VendorSpecificAttr) {
+
+	ok, data := packet.GetRawAttr(VendorSpecific)
+
+	if !ok {
+		return false, nil
+	}
+
+	var retVal []VendorSpecificAttr
+
+	for _, raw := range data {
+		vendorID := binary.BigEndian.Uint32(raw)
+
+		if vendorID == id { //ID matches
+			raw = raw[4:]
+			vLength := raw[1]
+
+			if int(vLength) != len(raw) {
+				continue //Length mismatch
+			}
+
+			vAttr := VendorSpecificAttr{
+				vType:   raw[0],
+				content: raw[2:],
+			}
+
+			retVal = append(retVal, vAttr)
+		}
+	}
+
+	return true, retVal
+
+}
+
+func (packet *RadiusPacket) SetVendorSpecificAttrs(id uint32, vAttrs []VendorSpecificAttr) {
+
+	var rawVendorAttrs [][]byte
+
+	for _, vAttr := range vAttrs {
+
+		raw := make([]byte, 4)
+		binary.BigEndian.PutUint32(raw, id)
+
+		raw = append(raw, vAttr.vType)
+		raw = append(raw, 2+byte(len(vAttr.content)))
+
+		raw = append(raw, vAttr.content...)
+
+		rawVendorAttrs = append(rawVendorAttrs, raw)
+
+	}
+
+	packet.SetRawAttr(VendorSpecific, rawVendorAttrs)
+
+}
+
+func (packet *RadiusPacket) GetMSMPPESendKey() (bool, []byte) {
+
+	if ok, vAttrs := packet.GetVendorSpecificAttrs(311 /*Microsoft vendor*/); ok {
+
+		for _, attr := range vAttrs {
+			if attr.vType == 16 { //Type for MPPE Send Key
+				return true, attr.content
+			}
+		}
+
+	}
+
+	return false, nil
+
+}
+
+func (packet *RadiusPacket) GetMSMPPERecvKey() (bool, []byte) {
+
+	if ok, vAttrs := packet.GetVendorSpecificAttrs(311 /*Microsoft vendor*/); ok {
+
+		for _, attr := range vAttrs {
+			if attr.vType == 17 { //Type for MPPE Recv Key
+				return true, attr.content
+			}
+		}
+
+	}
+
+	return false, nil
 
 }
 
