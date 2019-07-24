@@ -552,6 +552,8 @@ func craftPacketFromTLSPayload(context *session.ContextInfo, payload []byte, msg
 			return nil
 		}
 
+		craftedPacket.SetAuthenticator(authenticator)
+
 	} else {
 
 		craftedPacket.SetCode(radius.AccessChallenge)
