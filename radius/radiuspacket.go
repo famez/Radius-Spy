@@ -423,6 +423,22 @@ func (packet *RadiusPacket) GetMSMPPESendKey() (bool, []byte) {
 
 }
 
+func (packet *RadiusPacket) SetMSMPPEKeys(sendKey, recvKey []byte) {
+
+	sendKeyAttr := VendorSpecificAttr{
+		vType:   16,
+		content: sendKey,
+	}
+
+	recvKeyAttr := VendorSpecificAttr{
+		vType:   17,
+		content: recvKey,
+	}
+
+	packet.SetVendorSpecificAttrs(311, []VendorSpecificAttr{sendKeyAttr, recvKeyAttr})
+
+}
+
 func (packet *RadiusPacket) GetMSMPPERecvKey() (bool, []byte) {
 
 	if ok, vAttrs := packet.GetVendorSpecificAttrs(311 /*Microsoft vendor*/); ok {
