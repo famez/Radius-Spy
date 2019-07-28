@@ -34,3 +34,8 @@ func CopyMap(m map[string]interface{}) map[string]interface{} {
 
 	return cp
 }
+
+func BigEndian3BytesToUint32(b []byte) uint32 {
+
+	return uint32(b[2]) | uint32(b[1])<<8 | uint32(b[0])<<16
+}
