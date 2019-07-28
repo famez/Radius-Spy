@@ -2,7 +2,6 @@ package eap
 
 import (
 	"encoding/binary"
-	"fmt"
 )
 
 type EapCode uint8
@@ -77,7 +76,6 @@ func (packet *HeaderEap) Decode(buff []byte) bool {
 	length := binary.BigEndian.Uint16(buff[2:])
 
 	if length != uint16(len(buff)) {
-		fmt.Println("func (packet *HeaderEap) Decode(buff []byte). Length does not match")
 		return false
 	}
 
