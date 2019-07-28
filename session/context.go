@@ -63,6 +63,7 @@ type ContextInfo struct {
 	lastServerEapId byte     //Id for Eap messages from server
 	lastNASEapId    byte     //Id for Eap messages from NAS
 	lastAuthMsg     [16]byte //The last auth msg got from the client
+	lastGenAuthMsg  [16]byte //The last auth msg that we have generated as fake client
 	userName        string   //User name used by the STA to authenticate
 	secret          string
 	secretStatus    ContextSecretStatus
@@ -111,6 +112,18 @@ func (context *ContextInfo) SetLastAuthMsg(authMsg [16]byte) {
 func (context ContextInfo) GetLastAuthMsg() [16]byte {
 
 	return context.lastAuthMsg
+
+}
+
+func (context *ContextInfo) SetLastGenAuthMsg(authMsg [16]byte) {
+
+	context.lastGenAuthMsg = authMsg
+
+}
+
+func (context ContextInfo) GetLastGenAuthMsg() [16]byte {
+
+	return context.lastGenAuthMsg
 
 }
 
