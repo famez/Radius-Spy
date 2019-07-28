@@ -120,19 +120,27 @@ func DecryptKeyFromMPPE(mppeKey []byte, reqAuth [16]byte, secret string) (bool, 
 		decryptedKey[index] = value ^ encryptedKey[index]
 	}
 
-	return true, decryptedKey
+	keyLength := decryptedKey[0]
+
+	if int(keyLength+2) > len(decryptedKey) {
+		return false, nil
+	}
+
+	return true, decryptedKey[2 : keyLength+2]
 }
 
 //rfc2548 2.4.2
 func EncryptKeyToMPPE(key []byte, reqAuth [16]byte, secret string) (bool, []byte) {
 
-	if len(key) == 0 {
+	if len(key) == 0 || len(key) > 0xFF {
 		return false, nil
 	}
 
-	encryptedKey := make([]byte, len(key))
+	encryptedKey := make([]byte, len(key)+1)
 
-	copy(encryptedKey, key)
+	encryptedKey[0] = byte(len(key))
+
+	copy(encryptedKey[1:], key)
 
 	//Generate random salt
 	var salt [2]byte
@@ -148,7 +156,7 @@ func EncryptKeyToMPPE(key []byte, reqAuth [16]byte, secret string) (bool, []byte
 	salt[0] |= 0x80
 
 	//0 padding to make length a multiple of 16.
-	for i := 0; i < (len(key) % md5.Size); i++ {
+	for i := 0; i < (len(encryptedKey) % md5.Size); i++ {
 		encryptedKey = append(encryptedKey, 0)
 	}
 
