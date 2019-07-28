@@ -67,6 +67,7 @@ type ContextInfo struct {
 	userName        string   //User name used by the STA to authenticate
 	secret          string
 	secretStatus    ContextSecretStatus
+	derivedKey      []byte //Derived key to be used between NAS and STA to encrypt WIFI communications
 }
 
 var contexts []*ContextInfo
@@ -487,6 +488,14 @@ func (context *ContextInfo) SetServerMessage(serverMessage string) {
 
 	context.eap.msChap.serverMessage = serverMessage
 
+}
+
+func (context ContextInfo) GetDerivedKey() []byte {
+	return context.derivedKey
+}
+
+func (context *ContextInfo) SetDerivedKey(key []byte) {
+	context.derivedKey = key
 }
 
 func (context ContextInfo) PrintInfo() {
