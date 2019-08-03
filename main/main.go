@@ -128,60 +128,10 @@ func manglePacket(manglePacket *radius.RadiusPacket, from net.UDPAddr, to net.UD
 	if manglePacket.GetCode() == radius.AccessRequest {
 
 		//Retrieve basic information about the client
-		//NAS Port Type
-		if ok, nasPortType := manglePacket.GetNASPortType(); ok {
-			context.SetNasPortType(nasPortType)
 
-			if nasPortType == wireless80211Port {
-				fmt.Println("WIFI network Authetication!!")
-
-				//Set the current user name if not done before
-				if ok, user := manglePacket.GetUserName(); ok {
-					context.SetUserName(user)
-				}
-
-				//Set calling station
-				if ok, callingSta := manglePacket.GetCallingSTAID(); ok {
-					context.SetCallingStation(callingSta)
-				}
-
-			}
-
-		}
-
-		//NAS Port
-		if ok, nasPort := manglePacket.GetNASPort(); ok {
-			context.SetNasPort(nasPort)
-		}
-
-		//NAS IP
-		if ok, nasIP := manglePacket.GetNASIp(); ok {
-			context.SetNasIP(nasIP)
-		}
-
-		//Called STA
-		if ok, calledSTA := manglePacket.GetCalledSTAID(); ok {
-			context.SetCalledStation(calledSTA)
-		}
-
-		//Framed MTU
-		if ok, framedMTU := manglePacket.GetFramedMTU(); ok {
-			context.SetFramedMTU(framedMTU)
-		}
-
-		//Connect Info
-		if ok, connectInfo := manglePacket.GetConnectInfo(); ok {
-			context.SetConnectInfo(connectInfo)
-		}
-
-		//Acc Session
-		if ok, accSession := manglePacket.GetAccountSession(); ok {
-			context.SetAccSessionID(accSession)
-		}
+		updateContextFromPacket(context, manglePacket)
 
 	}
-
-	//TODO Detect Desired auth type method for EAP.
 
 	//Check if there are EAP messages...
 
@@ -943,6 +893,61 @@ func processEapSuccessResponse(context *session.ContextInfo, eapHeader *eap.Head
 			}
 
 		}
+	}
+
+}
+
+func updateContextFromPacket(context *session.ContextInfo, manglePacket *radius.RadiusPacket) {
+
+	//NAS Port Type
+	if ok, nasPortType := manglePacket.GetNASPortType(); ok {
+		context.SetNasPortType(nasPortType)
+
+		if nasPortType == wireless80211Port {
+			fmt.Println("WIFI network Authetication!!")
+
+			//Set the current user name if not done before
+			if ok, user := manglePacket.GetUserName(); ok {
+				context.SetUserName(user)
+			}
+
+			//Set calling station
+			if ok, callingSta := manglePacket.GetCallingSTAID(); ok {
+				context.SetCallingStation(callingSta)
+			}
+
+		}
+
+	}
+
+	//NAS Port
+	if ok, nasPort := manglePacket.GetNASPort(); ok {
+		context.SetNasPort(nasPort)
+	}
+
+	//NAS IP
+	if ok, nasIP := manglePacket.GetNASIp(); ok {
+		context.SetNasIP(nasIP)
+	}
+
+	//Called STA
+	if ok, calledSTA := manglePacket.GetCalledSTAID(); ok {
+		context.SetCalledStation(calledSTA)
+	}
+
+	//Framed MTU
+	if ok, framedMTU := manglePacket.GetFramedMTU(); ok {
+		context.SetFramedMTU(framedMTU)
+	}
+
+	//Connect Info
+	if ok, connectInfo := manglePacket.GetConnectInfo(); ok {
+		context.SetConnectInfo(connectInfo)
+	}
+
+	//Acc Session
+	if ok, accSession := manglePacket.GetAccountSession(); ok {
+		context.SetAccSessionID(accSession)
 	}
 
 }
