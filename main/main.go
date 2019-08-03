@@ -110,9 +110,19 @@ func manglePacket(manglePacket *radius.RadiusPacket, from net.UDPAddr, to net.UD
 
 	//Keep track of the current ID for received packets...
 	if clientToServer {
+
+		if context.GetLastNASMsgId() >= manglePacket.GetId() {
+			return false //If message received twice, drop it...
+		}
+
 		context.SetLastNASMsgId(manglePacket.GetId())
 		context.SetLastAuthMsg(manglePacket.GetAuthenticator()) //Keep track also of the
 	} else {
+
+		if context.GetLastServerMsgId() >= manglePacket.GetId() {
+			return false //If message received twice, drop it...
+		}
+
 		context.SetLastServerMsgId(manglePacket.GetId())
 	}
 
