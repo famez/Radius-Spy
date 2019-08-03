@@ -1,11 +1,12 @@
 package session
 
 import (
-	"fmt"
 	"net"
 	"radius/radius"
 	"radius/utils"
 	"strconv"
+
+	"github.com/golang/glog"
 )
 
 type Mode uint
@@ -87,14 +88,14 @@ func setupUDPServer(port int) *net.UDPConn {
 	localAddr, err := net.ResolveUDPAddr(protocol, addrToListen)
 
 	if err != nil {
-		fmt.Println("Wrong Address")
+		glog.V(3).Infoln("Wrong Address")
 		return nil
 	}
 
 	clientConn, err := net.ListenUDP(protocol, localAddr)
 
 	if err != nil {
-		fmt.Println("Error", err)
+		glog.V(3).Infoln("Error", err)
 		return nil
 	}
 
@@ -142,25 +143,20 @@ func (session *Session) Hijack(mangleFunc MangleFunc) {
 
 			//Channel closed (Problems with one of the sides)
 			if !more {
-				fmt.Println("Hijack: Something went wrong...")
+				glog.V(0).Infoln("Hijack: Something went wrong...")
 				break
 			}
 
-			fmt.Println("Message from", data.senderAddr, "to port:", data.dstPort)
-
-			//fmt.Println(hex.Dump(data.buff))
+			glog.V(3).Infoln("Message from", data.senderAddr, "to port:", data.dstPort)
 
 			//Forward packet
 
 			if data.senderAddr.IP.Equal(net.ParseIP(
 				session.hostName)) && utils.Contains(session.ports, data.senderAddr.Port) { //Came from authenticator server RADIUS
 
-				fmt.Println("From authenticator server")
-
 				//Check if address already seen
 				for _, client := range clients {
 					if client.mappedPort == data.dstPort {
-						fmt.Println("Send to client", client.clientAddr)
 
 						if session.mode == Active {
 
@@ -176,7 +172,7 @@ func (session *Session) Hijack(mangleFunc MangleFunc) {
 							if forward {
 
 								if encoded, raw := packet.Encode(); encoded {
-									fmt.Println("Forwarded... ")
+									glog.V(3).Infoln("Packet mangled and forwarded... ")
 									//Redirect our custom mangled packet to the client
 									serverConnections[data.senderAddr.Port].WriteToUDP(raw, &client.clientAddr)
 								}
@@ -195,8 +191,6 @@ func (session *Session) Hijack(mangleFunc MangleFunc) {
 
 			} else { //From authenticator
 
-				fmt.Println("From authenticator ")
-
 				found := false
 
 				var client clientData
@@ -204,7 +198,6 @@ func (session *Session) Hijack(mangleFunc MangleFunc) {
 				//Check if address already seen
 				for _, client = range clients {
 					if client.clientAddr.IP.Equal(data.senderAddr.IP) && client.clientAddr.Port == data.senderAddr.Port {
-						fmt.Println("Client found.")
 						found = true
 						break
 					}
@@ -212,8 +205,6 @@ func (session *Session) Hijack(mangleFunc MangleFunc) {
 
 				if !found {
 					//Create client
-
-					fmt.Println("Client not found. Creating... ")
 
 					//Determine free port
 
@@ -240,14 +231,14 @@ func (session *Session) Hijack(mangleFunc MangleFunc) {
 					authAddr, err := net.ResolveUDPAddr(protocol, session.hostName+":"+strconv.FormatUint(uint64(data.dstPort), 10))
 
 					if err != nil {
-						fmt.Println("Error authAddr ", err)
+						glog.V(3).Infoln("Error authAddr ", err)
 						return
 					}
 
 					conn, err := net.DialUDP(protocol, &localAddr, authAddr)
 
 					if err != nil {
-						fmt.Println("Error net.DialUDP ", err)
+						glog.V(3).Infoln("Error net.DialUDP ", err)
 						return
 					}
 
@@ -267,8 +258,6 @@ func (session *Session) Hijack(mangleFunc MangleFunc) {
 
 				}
 
-				fmt.Println("Sending to Radius Server...", client.connection.RemoteAddr().String())
-
 				if session.mode == Active {
 
 					session.currentClientData = &client
@@ -283,7 +272,7 @@ func (session *Session) Hijack(mangleFunc MangleFunc) {
 					if forward {
 
 						if encoded, raw := packet.Encode(); encoded {
-							fmt.Println("Forwarded... ")
+							glog.V(3).Infoln("Packet mangled and forwarded... ")
 							client.connection.Write(raw) //Redirect mangled packet to server
 						}
 
@@ -315,21 +304,20 @@ func (session *Session) Hijack(mangleFunc MangleFunc) {
 func (session *Session) SendPacket(packet *radius.RadiusPacket, clientToServer bool) {
 
 	if encoded, raw := packet.Encode(); encoded {
-		fmt.Println("Session send packet... ")
 
 		if clientToServer {
-			fmt.Println("Send packet to server... ")
+			glog.V(3).Infoln("Send packet to server... ")
 			num, err := session.currentClientData.connection.Write(raw) //Send packet to server
 
 			if err != nil {
-				fmt.Println("Error:", err)
+				glog.V(3).Infoln("Error:", err)
 			} else {
-				fmt.Println("Bytes written:", num)
+				glog.V(3).Infoln("Bytes written:", num)
 			}
 
 		} else {
 			session.currentServerConn.WriteToUDP(raw, &session.currentClientData.clientAddr)
-			fmt.Println("Send packet to client... ")
+			glog.V(3).Infoln("Send packet to client... ")
 		}
 
 	}

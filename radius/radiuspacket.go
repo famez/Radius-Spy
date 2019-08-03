@@ -2,9 +2,10 @@ package radius
 
 import (
 	"encoding/binary"
-	"fmt"
 	"net"
 	"radius/utils"
+
+	"github.com/golang/glog"
 )
 
 type RadiusCode uint8
@@ -108,8 +109,6 @@ func (packet RadiusPacket) Clone() *RadiusPacket {
 //returns bool. false if the packet is malformed. true if the packet is well decoded
 func (packet *RadiusPacket) Decode(buff []byte) bool {
 
-	fmt.Println("Decoding... ")
-
 	if len(buff) < headerSize { //20 = Size of code + id + length + authenticator
 		return false //Malformed
 	}
@@ -161,8 +160,6 @@ func (packet *RadiusPacket) Decode(buff []byte) bool {
 }
 
 func (packet *RadiusPacket) Encode() (bool, []byte) {
-
-	fmt.Println("Encoding... ")
 
 	buff := make([]byte, packet.length)
 
@@ -326,7 +323,7 @@ func (packet *RadiusPacket) SetRawAttr(attrType AttrType, data [][]byte) {
 	for _, raw := range data {
 
 		if len(raw) > maxAttrSize {
-			fmt.Println("SetRawAttr: The data exceeds the maximum size...")
+			glog.V(1).Infoln("SetRawAttr: The data exceeds the maximum size...")
 			continue
 		}
 

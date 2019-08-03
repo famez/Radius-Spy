@@ -2,7 +2,8 @@ package eap
 
 import (
 	"encoding/binary"
-	"fmt"
+
+	"github.com/golang/glog"
 )
 
 type PeapFlags struct {
@@ -125,7 +126,7 @@ func (packet *EapPeap) Decode(buff []byte) bool {
 	payloadLength := packet.header.GetLength() - uint16(offset) //Substract the header data length
 
 	if len(buff[offset:]) != int(payloadLength) {
-		fmt.Println("Length mismatch")
+		glog.V(2).Infoln("Length mismatch")
 
 		return false
 	}

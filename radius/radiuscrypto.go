@@ -4,8 +4,9 @@ import (
 	"crypto/hmac"
 	"crypto/md5"
 	"crypto/rand"
-	"fmt"
 	"io"
+
+	"github.com/golang/glog"
 )
 
 func CalculateResponseAuth(response *RadiusPacket, requestAuth [16]byte, secret string) (bool, [16]byte) {
@@ -72,7 +73,7 @@ func DecryptKeyFromMPPE(mppeKey []byte, reqAuth [16]byte, secret string) (bool, 
 	var decryptedKey []byte
 
 	if len(mppeKey) <= 2 { //There must be anything else appart from the salt
-		fmt.Println("Error 1")
+		glog.V(1).Infoln("Error")
 		return false, nil
 	}
 
@@ -80,7 +81,7 @@ func DecryptKeyFromMPPE(mppeKey []byte, reqAuth [16]byte, secret string) (bool, 
 	encryptedKey := mppeKey[2:]
 
 	if (len(encryptedKey) % md5.Size) != 0 {
-		fmt.Println("Error 1")
+		glog.V(1).Infoln("Error")
 		return false, nil //Must be multiple of 16.
 	}
 
@@ -112,7 +113,7 @@ func DecryptKeyFromMPPE(mppeKey []byte, reqAuth [16]byte, secret string) (bool, 
 	}
 
 	if len(decryptedKey) != len(encryptedKey) {
-		fmt.Println("Error 3")
+		glog.V(1).Infoln("Error")
 		return false, nil
 	}
 
@@ -148,7 +149,7 @@ func EncryptKeyToMPPE(key []byte, reqAuth [16]byte, secret string) (bool, []byte
 	_, err := rand.Read(salt[:])
 
 	if err != nil {
-		fmt.Println("Error in random function", err)
+		glog.V(1).Infoln("Error in random function", err)
 		return false, nil
 	}
 

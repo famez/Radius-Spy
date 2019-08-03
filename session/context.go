@@ -1,8 +1,9 @@
 package session
 
 import (
-	"fmt"
 	"net"
+
+	"github.com/golang/glog"
 )
 
 type ContextStatus uint8
@@ -345,8 +346,6 @@ func (context ContextInfo) GetNAS() net.UDPAddr {
 
 func (context *ContextInfo) AddTLSNASPayload(payload []byte) {
 
-	fmt.Println("AddTLSNASPayload")
-
 	context.eap.tls.storedNASPayload = append(context.eap.tls.storedNASPayload, payload...)
 
 }
@@ -358,8 +357,6 @@ func (context *ContextInfo) SetNASTLSLength(length uint32) {
 }
 
 func (context *ContextInfo) GetAndDeleteNASTLSPayloadAndLength() ([]byte, uint32) {
-
-	fmt.Println("GetAndDeleteNASTLSPayloadAndLength")
 
 	payload := context.eap.tls.storedNASPayload
 	length := context.eap.tls.nasPayloadLen
@@ -373,8 +370,6 @@ func (context *ContextInfo) GetAndDeleteNASTLSPayloadAndLength() ([]byte, uint32
 
 func (context *ContextInfo) AddTLSServerPayload(payload []byte) {
 
-	fmt.Println("AddTLSServerPayload")
-
 	context.eap.tls.storedServerPayload = append(context.eap.tls.storedServerPayload, payload...)
 
 }
@@ -386,8 +381,6 @@ func (context *ContextInfo) SetServerTLSLength(length uint32) {
 }
 
 func (context *ContextInfo) GetAndDeleteServerTLSPayloadAndLength() ([]byte, uint32) {
-
-	fmt.Println("GetAndDeleteServerTLSPayloadAndLength")
 
 	payload := context.eap.tls.storedServerPayload
 	length := context.eap.tls.serverPayloadLen
@@ -500,24 +493,24 @@ func (context *ContextInfo) SetDerivedKey(key []byte) {
 
 func (context ContextInfo) PrintInfo() {
 
-	fmt.Println("¡¡¡Context info!!!")
+	glog.V(2).Infoln("¡¡¡Context info!!!")
 
-	fmt.Println("NAS:", context.nas)
-	fmt.Println("Server:", context.server)
+	glog.V(2).Infoln("NAS:", context.nas)
+	glog.V(2).Infoln("Server:", context.server)
 
-	fmt.Println("Secret:", context.secret)
+	glog.V(2).Infoln("Secret:", context.secret)
 
-	fmt.Println("NAS Port Type:", context.nasPortType)
-	fmt.Println("NAS Port:", context.nasPort)
-	fmt.Println("Called STA:", context.calledStation)
+	glog.V(2).Infoln("NAS Port Type:", context.nasPortType)
+	glog.V(2).Infoln("NAS Port:", context.nasPort)
+	glog.V(2).Infoln("Called STA:", context.calledStation)
 
-	fmt.Println("Calling Station:", context.callingStation)
-	fmt.Println("User:", context.userName)
+	glog.V(2).Infoln("Calling Station:", context.callingStation)
+	glog.V(2).Infoln("User:", context.userName)
 
-	fmt.Println("Connect Info:", context.connectInfo)
+	glog.V(2).Infoln("Connect Info:", context.connectInfo)
 
-	fmt.Println("Accounting Session:", context.accSessionID)
+	glog.V(2).Infoln("Accounting Session:", context.accSessionID)
 
-	fmt.Println("EAP identity:", context.eap.identity)
+	glog.V(2).Infoln("EAP identity:", context.eap.identity)
 
 }

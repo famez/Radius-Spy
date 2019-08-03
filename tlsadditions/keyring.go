@@ -6,6 +6,8 @@ import (
 	"crypto/sha1"
 	"fmt"
 	"hash"
+
+	"github.com/golang/glog"
 )
 
 // Copyright 2009 The Go Authors. All rights reserved.
@@ -68,7 +70,7 @@ func EkmFromMasterSecret(version uint16, masterSecret, clientRandom, serverRando
 	//Only support for TLS version 1.0
 
 	if version != 0x301 { //Version TLS 1.0
-		fmt.Println("TLS version not supported. Only support for version 1.0")
+		glog.V(1).Infoln("TLS version not supported. Only support for version 1.0")
 		return nil
 	}
 

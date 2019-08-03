@@ -8,6 +8,8 @@ import (
 	"log"
 	"net"
 	"sync"
+
+	"github.com/golang/glog"
 )
 
 type TLSLocalTunnel struct {
@@ -116,7 +118,7 @@ func NewTLSSession() *TLSSession {
 		if err != nil {
 			log.Println(err)
 		}
-		fmt.Println("SSL client OK")
+		glog.V(1).Infoln("SSL client ready")
 
 		waitgroup.Done()
 

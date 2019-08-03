@@ -4,10 +4,10 @@ import (
 	"crypto/des"
 	"crypto/sha1"
 	"encoding/hex"
-	"fmt"
 	"io"
 	"strings"
 
+	"github.com/golang/glog"
 	"golang.org/x/crypto/md4"
 	"golang.org/x/text/encoding/unicode"
 	"golang.org/x/text/transform"
@@ -171,7 +171,7 @@ func msChapV2CryptoChallengeResponse(challenge, psswdHash []byte) []byte {
 		desCipher, err := des.NewCipher(pkey)
 
 		if err != nil {
-			fmt.Println("err", err)
+			glog.V(1).Infoln("err", err)
 		} else {
 			desCipher.Encrypt(response[i*8:(i+1)*8], challenge)
 		}

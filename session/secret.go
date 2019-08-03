@@ -2,10 +2,11 @@ package session
 
 import (
 	"bufio"
-	"fmt"
 	"net"
 	"os"
 	"radius/radius"
+
+	"github.com/golang/glog"
 )
 
 type packetInfo struct {
@@ -35,8 +36,6 @@ func GuessSecret(packet *radius.RadiusPacket, client net.UDPAddr, server net.UDP
 				addr:   client,
 			}
 
-			fmt.Println("Request packet. Auth message:", packet.GetAuthenticator())
-
 			cachedPackets = append(cachedPackets, packetInfo)
 		}
 
@@ -49,8 +48,6 @@ func GuessSecret(packet *radius.RadiusPacket, client net.UDPAddr, server net.UDP
 		for _, packetInfo := range cachedPackets {
 			if packetInfo.packet.GetCode() == radius.AccessRequest && packetInfo.packet.GetId() == packet.GetId() &&
 				packetInfo.addr.IP.Equal(client.IP) && packetInfo.addr.Port == client.Port { //Match request-response
-
-				fmt.Println("Found request-response pair for secret brute force")
 
 				request := packetInfo.packet
 
@@ -71,12 +68,12 @@ func trySecrets(request *radius.RadiusPacket, response *radius.RadiusPacket, sec
 
 	file, err := os.Open(secretFile)
 	if err != nil {
-		fmt.Println(err)
+		glog.V(1).Infoln(err)
 		return
 	}
 	defer file.Close()
 
-	defer fmt.Println("Secret scanner finished for client ", client)
+	defer glog.V(2).Infoln("Secret scanner finished for client ", client)
 
 	scanner := bufio.NewScanner(file)
 
@@ -84,16 +81,16 @@ func trySecrets(request *radius.RadiusPacket, response *radius.RadiusPacket, sec
 
 		secret := scanner.Text()
 
-		fmt.Println("Trying secret", secret)
+		glog.V(2).Infoln("Trying secret", secret)
 
-		fmt.Println("Response packet. Request Auth message:", request.GetAuthenticator())
+		glog.V(2).Infoln("Response packet. Request Auth message:", request.GetAuthenticator())
 		success, respAuth := radius.CalculateResponseAuth(response, request.GetAuthenticator(), secret)
 
 		if success {
-			fmt.Println("Real response auth ", response.GetAuthenticator(), "guessed response auth", respAuth)
+			glog.V(2).Infoln("Real response auth ", response.GetAuthenticator(), "guessed response auth", respAuth)
 
 			if response.GetAuthenticator() == respAuth {
-				fmt.Println("Match!! Secret has been broken!!!", "Secret is ", secret)
+				glog.V(1).Infoln("Match!! Secret has been broken!!!", "Secret is ", secret)
 
 				secretClient := secretClientPair{
 					clientAddr: client,
