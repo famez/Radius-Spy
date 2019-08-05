@@ -44,9 +44,7 @@ type KeyringData struct {
 	masterSecretSet bool
 }
 
-type keyRingChannelWriter struct {
-	keyRingChannels map[[32]byte]chan [48]byte
-}
+type keyRingChannelWriter map[[32]byte]chan [48]byte
 
 var tlsLocalListener net.Listener
 var tcpLocalListener net.Listener
@@ -321,7 +319,7 @@ func (session *TLSSession) SetNASVersion(version uint16) {
 func newKeyRingChannelWriter() *keyRingChannelWriter {
 
 	writer := &keyRingChannelWriter{}
-	writer.keyRingChannels = make(map[[32]byte]chan [48]byte)
+	*writer = make(map[[32]byte]chan [48]byte)
 	return writer
 }
 
@@ -354,12 +352,12 @@ func (writer *keyRingChannelWriter) Write(p []byte) (n int, err error) {
 	copy(masterSecret[:], decoded)
 
 	//Generate channel if it does not exist
-	if writer.keyRingChannels[randomClient] == nil {
-		writer.keyRingChannels[randomClient] = make(chan [48]byte, 1) //Buffer only one array to be read later in another routine
+	if (*writer)[randomClient] == nil {
+		(*writer)[randomClient] = make(chan [48]byte, 1) //Buffer only one array to be read later in another routine
 	}
 
 	//Reference to the channel
-	channel := writer.keyRingChannels[randomClient]
+	channel := (*writer)[randomClient]
 
 	//Not blocking channel
 	select {
@@ -375,11 +373,11 @@ func (writer *keyRingChannelWriter) getMasterSecret(randomClient [32]byte) (bool
 	var retVal [48]byte
 
 	//Check channel
-	if writer.keyRingChannels[randomClient] == nil {
+	if (*writer)[randomClient] == nil {
 		return false, retVal
 	}
 
-	channel := writer.keyRingChannels[randomClient]
+	channel := (*writer)[randomClient]
 
 	//Not blocking channel
 	select {
@@ -396,6 +394,6 @@ func (writer *keyRingChannelWriter) getMasterSecret(randomClient [32]byte) (bool
 
 func (writer *keyRingChannelWriter) clearChannel(randomClient [32]byte) {
 
-	writer.keyRingChannels[randomClient] = nil
+	(*writer)[randomClient] = nil
 
 }
