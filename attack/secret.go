@@ -1,10 +1,11 @@
-package session
+package attack
 
 import (
 	"bufio"
 	"net"
 	"os"
 	"radius/radius"
+	"radius/session"
 
 	"github.com/golang/glog"
 )
@@ -16,9 +17,7 @@ type packetInfo struct {
 
 var cachedPackets []packetInfo
 
-func GuessSecret(packet *radius.RadiusPacket, client net.UDPAddr, server net.UDPAddr, clientToServer bool, secretChan chan secretClientPair) {
-
-	//TODO check if secret available in database before launching a goroutine
+func GuessSecret(packet *radius.RadiusPacket, client net.UDPAddr, server net.UDPAddr, clientToServer bool) (bool, string) {
 
 	switch packet.GetCode() {
 	case radius.AccessRequest:
@@ -26,7 +25,7 @@ func GuessSecret(packet *radius.RadiusPacket, client net.UDPAddr, server net.UDP
 
 			for _, packetInfo := range cachedPackets {
 				if packetInfo.addr.IP.Equal(client.IP) && packetInfo.addr.Port == client.Port {
-					return //If client already treated, do not add it to the slice
+					return false, "" //If client already treated, do not add it to the slice
 				}
 
 			}
@@ -42,34 +41,39 @@ func GuessSecret(packet *radius.RadiusPacket, client net.UDPAddr, server net.UDP
 	case radius.AccessAccept, radius.AccessChallenge, radius.AccessReject:
 
 		if clientToServer || cachedPackets == nil {
-			return //Something went wrong
+			return false, "" //Something went wrong
 		}
 
-		for _, packetInfo := range cachedPackets {
+		for index, packetInfo := range cachedPackets {
 			if packetInfo.packet.GetCode() == radius.AccessRequest && packetInfo.packet.GetId() == packet.GetId() &&
 				packetInfo.addr.IP.Equal(client.IP) && packetInfo.addr.Port == client.Port { //Match request-response
 
 				request := packetInfo.packet
 
+				//Delete request once found.
+				copy(cachedPackets[index:], cachedPackets[index+1:])
+				cachedPackets = cachedPackets[:len(cachedPackets)-1]
+
 				//At this point, we have pair of packets request-response
 
-				config := GetConfig()
-				go trySecrets(request, packet, config.GetSecretsFile(), client, secretChan)
+				config := session.GetConfig()
+				return trySecrets(request, packet, config.GetSecretsFile(), client)
 
-				break
 			}
 		}
 
 	}
 
+	return false, ""
+
 }
 
-func trySecrets(request *radius.RadiusPacket, response *radius.RadiusPacket, secretFile string, client net.UDPAddr, secretChan chan secretClientPair) {
+func trySecrets(request *radius.RadiusPacket, response *radius.RadiusPacket, secretFile string, client net.UDPAddr) (bool, string) {
 
 	file, err := os.Open(secretFile)
 	if err != nil {
 		glog.V(1).Infoln(err)
-		return
+		return false, ""
 	}
 	defer file.Close()
 
@@ -92,17 +96,13 @@ func trySecrets(request *radius.RadiusPacket, response *radius.RadiusPacket, sec
 			if response.GetAuthenticator() == respAuth {
 				glog.V(1).Infoln("Match!! Secret has been broken!!!", "Secret is ", secret)
 
-				secretClient := secretClientPair{
-					clientAddr: client,
-					secret:     secret,
-				}
-
-				secretChan <- secretClient
-				return
+				return true, secret
 
 			}
 		}
 
 	}
+
+	return false, ""
 
 }

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"flag"
 	"net"
+	"radius/attack"
 	"radius/eap"
 	"radius/radius"
 	"radius/session"
@@ -213,16 +214,10 @@ func manglePacket(manglePacket *radius.RadiusPacket, from net.UDPAddr, to net.UD
 
 	}
 
-	//Used to determine if we have already the secret, because we have broken it or it is available in the database
-	status := context.GetSecretStatus()
-
-	//Check the status concerning the secret for the current context
-	switch status {
-	case session.SecretUnknown:
-		mySession.GuessSecret(manglePacket.Clone(), client, server, clientToServer)
-
-	case session.SecretOk:
-
+	if context.GetSecret() == "" { //No secret discovered
+		if ok, secret := attack.GuessSecret(manglePacket.Clone(), client, server, clientToServer); ok {
+			context.SetSecret(secret)
+		}
 	}
 
 	context.PrintInfo()

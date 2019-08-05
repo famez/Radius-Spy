@@ -285,15 +285,6 @@ func (session *Session) Hijack(mangleFunc MangleFunc) {
 
 			}
 
-		case secretClient := <-session.secretChan:
-
-			//Secret for a client has been broken.
-			//Add it to the context
-			context := GetContextByClient(secretClient.clientAddr)
-
-			context.SetSecret(secretClient.secret)
-			context.SetSecretStatus(SecretOk)
-
 		}
 
 	}
@@ -320,17 +311,6 @@ func (session *Session) SendPacket(packet *radius.RadiusPacket, clientToServer b
 			glog.V(3).Infoln("Send packet to client... ")
 		}
 
-	}
-
-}
-
-func (session *Session) GuessSecret(packet *radius.RadiusPacket, client net.UDPAddr, server net.UDPAddr, clientToServer bool) {
-
-	context := GetContextByClient(client)
-
-	//Only guess secret if it has not yet discovered or if there is no a discovering process
-	if context.GetSecretStatus() != SecretOk {
-		GuessSecret(packet, client, server, clientToServer, session.secretChan)
 	}
 
 }

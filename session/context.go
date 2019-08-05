@@ -7,12 +7,6 @@ import (
 )
 
 type ContextStatus uint8
-type ContextSecretStatus uint8
-
-const (
-	SecretUnknown ContextSecretStatus = 0
-	SecretOk      ContextSecretStatus = 1
-)
 
 //TLSContext will hold the context of the TLS session originated by EAP-PEAP message
 //We create a loopback tunnel to be able to send the data generated
@@ -67,7 +61,6 @@ type ContextInfo struct {
 	lastGenAuthMsg  [16]byte //The last auth msg that we have generated as fake client
 	userName        string   //User name used by the STA to authenticate
 	secret          string
-	secretStatus    ContextSecretStatus
 	derivedKey      []byte //Derived key to be used between NAS and STA to encrypt WIFI communications
 }
 
@@ -302,18 +295,6 @@ func (context ContextInfo) GetConnectInfo() string {
 
 }
 
-func (context *ContextInfo) SetSecretStatus(status ContextSecretStatus) {
-
-	context.secretStatus = status
-
-}
-
-func (context ContextInfo) GetSecretStatus() ContextSecretStatus {
-
-	return context.secretStatus
-
-}
-
 func (context *ContextInfo) SetEapMethod(method uint8) {
 
 	context.eap.method = method
@@ -493,7 +474,7 @@ func (context *ContextInfo) SetDerivedKey(key []byte) {
 
 func (context ContextInfo) PrintInfo() {
 
-	glog.V(2).Infoln("¡¡¡Context info!!!")
+	glog.V(2).Infoln("**Context info**")
 
 	glog.V(2).Infoln("NAS:", context.nas)
 	glog.V(2).Infoln("Server:", context.server)
