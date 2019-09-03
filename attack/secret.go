@@ -10,6 +10,8 @@ import (
 	"github.com/golang/glog"
 )
 
+//This structure is used to keep track of the previously received Radius packets from a given source,
+//because we need a pair of packets Access-Request, Access-Challenge to carry out the dictionary attack.
 type packetInfo struct {
 	packet *radius.RadiusPacket
 	addr   net.UDPAddr
@@ -17,6 +19,10 @@ type packetInfo struct {
 
 var cachedPackets []packetInfo
 
+//This function will store the packet passed as argument in case that the packet is of
+//type Access-Request. Otherwise, it will compare the identifier of the Radius packet.
+//If the identifier matches with one of the stored Access-Request messages, a pair of Access-Request,
+//Access-Challenge messages is available and the dictionary attack can start by calling the function trySecrets()
 func GuessSecret(packet *radius.RadiusPacket, client net.UDPAddr, server net.UDPAddr, clientToServer bool) (bool, string) {
 
 	switch packet.GetCode() {
@@ -68,6 +74,9 @@ func GuessSecret(packet *radius.RadiusPacket, client net.UDPAddr, server net.UDP
 
 }
 
+//This function tries to guess the shared secret between NAS and authentication
+//server used in the Radius protocol by calculating the Authenticator field for
+//an Access-Challenge message and comparing it with the real value in the message
 func trySecrets(request *radius.RadiusPacket, response *radius.RadiusPacket, secretFile string, client net.UDPAddr) (bool, string) {
 
 	file, err := os.Open(secretFile)
