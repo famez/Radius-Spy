@@ -26,9 +26,9 @@ type secretClientPair struct {
 	secret     string
 }
 
-//Session between host and guest to be hijacked.
+//Session between host and client to be hijacked.
 //The attacker must be placed between the authenticator and the authenticator server.
-//hostName is the target RADIUS authenticator
+//hostName is the target RADIUS authenticator server
 type Session struct {
 	hostName          string //Target RADIUS server
 	ports             []int  //Target ports

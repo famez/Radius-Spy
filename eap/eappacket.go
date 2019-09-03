@@ -22,6 +22,8 @@ const (
 	TLV       EapType = 33
 )
 
+//Interface that defines the functions common to any type of EAP message.
+//Every EAP method should implement this interface.
 type EapPacket interface {
 	Decode(buff []byte) bool
 	Encode() (bool, []byte)
@@ -54,6 +56,10 @@ type HeaderEap struct {
 	msgType EapType
 }
 
+//This function encodes the attributes of the header of an
+//EAP message (code, id, length, type) and returns the encoded result in a slice.
+//1º retval: If success encoding, return true, else false.
+//2º retval: The encoded slice.
 func (packet *HeaderEap) Encode() (bool, []byte) {
 
 	buff := make([]byte, packet.length)
@@ -71,6 +77,8 @@ func (packet *HeaderEap) Encode() (bool, []byte) {
 
 }
 
+//This function decodes from a given slice with raw data the attributes
+//that belongs to the EAP header (code, identifier, length, type).
 func (packet *HeaderEap) Decode(buff []byte) bool {
 
 	length := binary.BigEndian.Uint16(buff[2:])

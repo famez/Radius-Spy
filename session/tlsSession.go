@@ -323,6 +323,8 @@ func newKeyRingChannelWriter() *keyRingChannelWriter {
 	return writer
 }
 
+//Implementation of the io.Writer interface. Scans p and extracts master secret.
+//The secret is written then into a channel. The channel can obtained from the client random chunk.
 func (writer *keyRingChannelWriter) Write(p []byte) (n int, err error) {
 
 	line := string(p)
@@ -368,6 +370,7 @@ func (writer *keyRingChannelWriter) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
+//Returns the master secret for a given random client chunk
 func (writer *keyRingChannelWriter) getMasterSecret(randomClient [32]byte) (bool, [48]byte) {
 
 	var retVal [48]byte
