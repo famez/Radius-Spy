@@ -356,13 +356,13 @@ func manageNASPeap(manglePacket *radius.RadiusPacket, from net.UDPAddr, to net.U
 			masterSecret := tlsSession.GetMasterSecret()
 
 			glog.V(3).Infoln("Random Client:")
-			glog.V(3).Infoln("\n"+hex.Dump(randomClient[:]))
+			glog.V(3).Infoln("\n" + hex.Dump(randomClient[:]))
 
 			glog.V(3).Infoln("Random Server:")
-			glog.V(3).Infoln("\n"+hex.Dump(randomServer[:]))
+			glog.V(3).Infoln("\n" + hex.Dump(randomServer[:]))
 
 			glog.V(3).Infoln("Master Secret:")
-			glog.V(3).Infoln("\n"+hex.Dump(masterSecret[:]))
+			glog.V(3).Infoln("\n" + hex.Dump(masterSecret[:]))
 
 			glog.V(3).Infoln("Calculating Keys:")
 
@@ -378,7 +378,7 @@ func manageNASPeap(manglePacket *radius.RadiusPacket, from net.UDPAddr, to net.U
 				glog.V(1).Infoln("Error exporting keyring material:", err)
 			} else {
 				glog.V(3).Infoln("Keyring material:")
-				glog.V(3).Infoln("\n"+hex.Dump(keyringMaterial))
+				glog.V(3).Infoln("\n" + hex.Dump(keyringMaterial))
 
 				//Derived Key obtained
 				context.SetDerivedKey(keyringMaterial)
@@ -444,7 +444,7 @@ func manageNASPeap(manglePacket *radius.RadiusPacket, from net.UDPAddr, to net.U
 					//Get Client Random from Client Hello message in TLS handshake message
 					if ok, clientRandom := tlsadditions.GetRandomFromTLSData(payload, true); ok {
 						glog.V(3).Infoln("TLS Random Client:")
-						glog.V(3).Infoln("\n"+hex.Dump(clientRandom))
+						glog.V(3).Infoln("\n" + hex.Dump(clientRandom))
 
 						tlsSession.SetRandomClient(clientRandom)
 					}
@@ -460,7 +460,7 @@ func manageNASPeap(manglePacket *radius.RadiusPacket, from net.UDPAddr, to net.U
 					//Get Server Random from Server Hello message in TLS handshake message
 					if ok, serverRandom := tlsadditions.GetRandomFromTLSData(rawResponse, false); ok {
 						glog.V(3).Infoln("TLS Random Server:")
-						glog.V(3).Infoln("\n"+hex.Dump(serverRandom))
+						glog.V(3).Infoln("\n" + hex.Dump(serverRandom))
 
 						tlsSession.SetRandomServer(serverRandom)
 
@@ -577,7 +577,7 @@ func onTLSData(tlsContent []byte, context *session.ContextInfo,
 	var eapHeader eap.HeaderEap
 
 	glog.V(3).Infoln("onTLSData. Data:")
-	glog.V(3).Infoln("\n"+hex.Dump(tlsContent))
+	glog.V(3).Infoln("\n" + hex.Dump(tlsContent))
 
 	//Forward TLS data
 	tlsSession := context.GetTLSSession()
@@ -659,7 +659,7 @@ func onTLSData(tlsContent []byte, context *session.ContextInfo,
 	}
 
 	glog.V(3).Infoln("onTLSData. Converted data:")
-	glog.V(3).Infoln("\n"+hex.Dump(tlsContent))
+	glog.V(3).Infoln("\n" + hex.Dump(tlsContent))
 
 	//Once we added the missing data, we can proceed to decode the tunneled EAP message.
 
@@ -711,7 +711,7 @@ func manageMsChapV2(packet *eap.EapMSCHAPv2, context *session.ContextInfo) {
 	switch packet.GetOpCode() {
 	case eap.MsChapV2Challenge: //Server sends a challenge request
 		glog.V(2).Infoln("Received auth challenge")
-		glog.V(3).Infoln("\n"+hex.Dump(packet.GetAuthChallenge()))
+		glog.V(3).Infoln("\n" + hex.Dump(packet.GetAuthChallenge()))
 
 		context.SetMsChapV2AuthChallenge(packet.GetAuthChallenge())
 
@@ -720,12 +720,12 @@ func manageMsChapV2(packet *eap.EapMSCHAPv2, context *session.ContextInfo) {
 		peerChallenge, ntResponse, _ := eap.MSCHAPv2ExtractFromResponse(packet.GetResponse())
 
 		glog.V(3).Infoln("Peer challenge")
-		glog.V(3).Infoln("\n"+hex.Dump(peerChallenge))
+		glog.V(3).Infoln("\n" + hex.Dump(peerChallenge))
 
 		context.SetMsChapV2PeerChallenge(peerChallenge)
 
 		glog.V(3).Infoln("NT-Response")
-		glog.V(3).Infoln("\n"+hex.Dump(ntResponse))
+		glog.V(3).Infoln("\n" + hex.Dump(ntResponse))
 
 		context.SetMsChapV2NTResponse(ntResponse)
 
@@ -734,26 +734,26 @@ func manageMsChapV2(packet *eap.EapMSCHAPv2, context *session.ContextInfo) {
 		calculatedResponse := eap.MsChapV2GenerateNTResponse(context.GetMsChapV2AuthChallenge(), context.GetMsChapV2PeerChallenge(), context.GetUserName(), "password")
 
 		glog.V(3).Infoln("Local NT-Response")
-		glog.V(3).Infoln("\n"+hex.Dump(calculatedResponse))
+		glog.V(3).Infoln("\n" + hex.Dump(calculatedResponse))
 
 		glog.V(2).Infoln("Calculating Master key")
 
 		masterKey := eap.MsChapV2GetMasterKeyFromPsswd("password", ntResponse)
 
 		glog.V(3).Infoln("Calculated Master Key:")
-		glog.V(3).Infoln("\n"+hex.Dump(masterKey))
+		glog.V(3).Infoln("\n" + hex.Dump(masterKey))
 
 		glog.V(2).Infoln("Calculating Send key")
 
 		sendKey := eap.MsChapV2GetSendKey(masterKey)
 		glog.V(3).Infoln("Calculated Send Key:")
-		glog.V(3).Infoln("\n"+hex.Dump(sendKey))
+		glog.V(3).Infoln("\n" + hex.Dump(sendKey))
 
 		glog.V(2).Infoln("Calculating Receive key")
 
 		receiveKey := eap.MsChapV2GetReceiveKey(masterKey)
 		glog.V(3).Infoln("Calculated Receive Key:")
-		glog.V(3).Infoln("\n"+hex.Dump(receiveKey))
+		glog.V(3).Infoln("\n" + hex.Dump(receiveKey))
 
 	case eap.MsChapV2Success:
 
@@ -803,12 +803,12 @@ func processEapSuccessResponse(context *session.ContextInfo, eapHeader *eap.Head
 			//Obtain the MPPE receive key
 			if ok, rcvKey := manglePacket.GetMSMPPERecvKey(); ok {
 				glog.V(1).Infoln("MPPE Recv key intercepted")
-				glog.V(3).Infoln("\n"+hex.Dump(rcvKey))
+				glog.V(3).Infoln("\n" + hex.Dump(rcvKey))
 
 				//Decrypt key
 				glog.V(2).Infoln("Decrypt recv key")
 				if ok, decryptedRcvKey := radius.DecryptKeyFromMPPE(rcvKey, context.GetLastGenAuthMsg(), context.GetSecret()); ok {
-					glog.V(3).Infoln("\n"+hex.Dump(decryptedRcvKey))
+					glog.V(3).Infoln("\n" + hex.Dump(decryptedRcvKey))
 
 					//This key is based in TLS session between us and Radius Server which differs
 					//from the TLS session created between the wireless peer and us.
@@ -834,12 +834,12 @@ func processEapSuccessResponse(context *session.ContextInfo, eapHeader *eap.Head
 			//Obtain the MPPE send key
 			if ok, sndKey := manglePacket.GetMSMPPESendKey(); ok {
 				glog.V(1).Infoln("MPPE Send key intercepted")
-				glog.V(3).Infoln("\n"+hex.Dump(sndKey))
+				glog.V(3).Infoln("\n" + hex.Dump(sndKey))
 
 				//Decrypt key
 				glog.V(2).Infoln("Decrypt send key:")
 				if ok, decryptedSndKey := radius.DecryptKeyFromMPPE(sndKey, context.GetLastGenAuthMsg(), context.GetSecret()); ok {
-					glog.V(3).Infoln("\n"+hex.Dump(decryptedSndKey))
+					glog.V(3).Infoln("\n" + hex.Dump(decryptedSndKey))
 
 					//This key is based in TLS session between us and Radius Server which differs
 					//from the TLS session created between the wireless peer and us.
