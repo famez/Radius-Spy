@@ -31,8 +31,6 @@ const softVersion = "1.0.0"
 const authPort = 1812
 const accPort = 1813
 
-const hostName = "169.254.63.10"
-
 const wireless80211Port = 19
 
 var mySession session.Session
@@ -973,6 +971,8 @@ func main() {
 	secrets := flag.String("secrets", "secrets.txt", "Secrets file to perform dictionary attacks")
 	passwords := flag.String("passwords", "passwords.txt", "Passwords file to perform dictionary attacks")
 
+	server := flag.String("server", "169.254.63.10", "Authentication server to attack")
+
 	active := flag.Bool("active", false, "When activated, communications will be intercepted, otherwise, we only forward packets")
 
 	flag.Parse()
@@ -994,7 +994,7 @@ func main() {
 
 	glog.V(0).Infoln("Initializing...")
 
-	mySession.Init(mode, hostName, authPort, accPort)
+	mySession.Init(mode, *server, authPort, accPort)
 
 	glog.V(0).Infoln("Hijacking session...")
 
