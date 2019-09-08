@@ -2,8 +2,8 @@ package session
 
 import (
 	"net"
-	"radius-spy/radius"
-	"radius-spy/utils"
+	"radius"
+	"utils"
 	"strconv"
 
 	"github.com/golang/glog"

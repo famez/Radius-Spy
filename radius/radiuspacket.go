@@ -3,7 +3,7 @@ package radius
 import (
 	"encoding/binary"
 	"net"
-	"radius-spy/utils"
+	"utils"
 
 	"github.com/golang/glog"
 )

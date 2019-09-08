@@ -1,16 +1,16 @@
 package main
 
 import (
+	"attack"
 	"crypto/rand"
+	"eap"
 	"encoding/binary"
 	"encoding/hex"
 	"flag"
 	"net"
-	"radius-spy/attack"
-	"radius-spy/eap"
-	"radius-spy/radius"
-	"radius-spy/session"
-	"radius-spy/tlsadditions"
+	"radius"
+	"session"
+	"tlsadditions"
 
 	"github.com/golang/glog"
 )
