@@ -7,15 +7,15 @@ import (
 	"flag"
 	"net"
 
-	"./tlsadditions"
+	"github.com/famez/Radius-Spy/tlsadditions"
 
-	"./session"
+	"github.com/famez/Radius-Spy/session"
 
-	"./radius"
+	"github.com/famez/Radius-Spy/radius"
 
-	"./eap"
+	"github.com/famez/Radius-Spy/eap"
 
-	"./attack"
+	"github.com/famez/Radius-Spy/attack"
 
 	"github.com/golang/glog"
 )
