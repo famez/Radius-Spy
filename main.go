@@ -1,16 +1,21 @@
 package main
 
 import (
-	"attack"
 	"crypto/rand"
-	"eap"
 	"encoding/binary"
 	"encoding/hex"
 	"flag"
 	"net"
-	"radius"
-	"session"
-	"tlsadditions"
+
+	"./tlsadditions"
+
+	"./session"
+
+	"./radius"
+
+	"./eap"
+
+	"./attack"
 
 	"github.com/golang/glog"
 )
