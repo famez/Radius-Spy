@@ -2,6 +2,7 @@ package session
 
 import (
 	"net"
+	"os"
 	"strconv"
 
 	"github.com/famez/Radius-Spy/radius"
@@ -89,15 +90,15 @@ func setupUDPServer(port int) *net.UDPConn {
 	localAddr, err := net.ResolveUDPAddr(protocol, addrToListen)
 
 	if err != nil {
-		glog.V(3).Infoln("Wrong Address")
-		return nil
+		glog.V(0).Infoln("Could not bind to the corresponding port:", port)
+		os.Exit(-1)
 	}
 
 	clientConn, err := net.ListenUDP(protocol, localAddr)
 
 	if err != nil {
-		glog.V(3).Infoln("Error", err)
-		return nil
+		glog.V(0).Infoln("Error", err)
+		os.Exit(-1)
 	}
 
 	return clientConn
