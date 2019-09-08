@@ -4,8 +4,8 @@ import (
 	"bufio"
 	"net"
 	"os"
-	"radius/radius"
-	"radius/session"
+	"radius-spy/radius"
+	"radius-spy/session"
 
 	"github.com/golang/glog"
 )

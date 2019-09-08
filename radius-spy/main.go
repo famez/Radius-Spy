@@ -6,11 +6,11 @@ import (
 	"encoding/hex"
 	"flag"
 	"net"
-	"radius/attack"
-	"radius/eap"
-	"radius/radius"
-	"radius/session"
-	"radius/tlsadditions"
+	"radius-spy/attack"
+	"radius-spy/eap"
+	"radius-spy/radius"
+	"radius-spy/session"
+	"radius-spy/tlsadditions"
 
 	"github.com/golang/glog"
 )

@@ -3,8 +3,8 @@ package attack
 import (
 	"bufio"
 	"os"
-	"radius/eap"
-	"radius/session"
+	"radius-spy/eap"
+	"radius-spy/session"
 
 	"github.com/golang/glog"
 )

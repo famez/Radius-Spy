@@ -2,7 +2,7 @@ package tlsadditions
 
 import (
 	"encoding/binary"
-	"radius/utils"
+	"radius-spy/utils"
 )
 
 type TLSContentType uint8
