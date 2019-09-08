@@ -2,9 +2,10 @@ package session
 
 import (
 	"net"
-	"radius"
-	"utils"
 	"strconv"
+
+	"github.com/famez/Radius-Spy/radius"
+	"github.com/famez/Radius-Spy/utils"
 
 	"github.com/golang/glog"
 )
